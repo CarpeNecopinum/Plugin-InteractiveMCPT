@@ -71,6 +71,7 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
 
   public:
 
+
     // BaseInterface
     QString name() { return (QString("Interactive MCPT")); }
     QString description( ) { return (QString("")); }
@@ -88,6 +89,9 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
     void saveImage();
 
     void raytrace();
+    void globalRender();
+
+    void changeRaysPerPixel(int rays) { raysPerPixel = rays; }
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -157,17 +161,24 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
    public slots:
       QString version() { return QString("1.0"); }
 
-   private:
+protected:
+      struct CameraInfo
+      {
+          Vec3d x_dir, y_dir;
+          Vec3d image_plane_start;
+          Vec3d eye_point;
+      };
+
+      CameraInfo computeCameraInfo() const;
+private:
      QTimer updateTimer_;
 
      // The rendered image
      QImage image_;
-
-     // Label for showing the rendered Image
      QLabel* imageLabel_;
-
-     // Window used to render the image
      QWidget* imageWindow;
+
+     int raysPerPixel;
 
      // Light sources in the scene
      std::vector< LightSource > lights_;
@@ -176,6 +187,8 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
      bool cancel_;
 
      void clearImage();
+
+     void tracePixel(size_t x, size_t y, const CameraInfo &cam);
 };
 
 #endif //INTERACTIVEMCPT_HH

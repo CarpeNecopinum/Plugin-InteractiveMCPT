@@ -44,16 +44,19 @@ void InteractiveMCPTPlugin::initializePlugin()
     layout->addLayout(sidebox);
 
     QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",imageWindow);
+    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
     sidebox->addWidget(globalRenderButton);
 
+    // Input: Rays per Pixel
     QGridLayout * sideboxGrid = new QGridLayout(imageWindow);
     sidebox->addLayout(sideboxGrid);
     sideboxGrid->addWidget(new QLabel("Rays per Pixel", imageWindow), 0, 0);
 
-    QSpinBox * raysPerPixel = new QSpinBox(imageWindow);
-    raysPerPixel->setMaximum(64);
-    raysPerPixel->setMinimum(1);
-    sideboxGrid->addWidget(raysPerPixel, 0, 1);
+    QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
+    seRaysPerPixel->setMaximum(64);
+    seRaysPerPixel->setMinimum(1);
+    connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
+    sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
 
 }
 
@@ -82,6 +85,119 @@ void InteractiveMCPTPlugin::openWindow() {
     imageWindow->show();
 }
 
+/** \brief Main loop of the raytracer
+ *
+ * This function contains the main loop of the raytracer and the setup of the shot rays
+ */
+
+void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y, const CameraInfo& cam)
+{
+
+}
+
+void InteractiveMCPTPlugin::raytrace() {
+    QColor        pixelColor(0,0,0);                 // Variable for color transformation to QImage (don't use!)
+    Vec3d         viewingDirection;                  // Viewing direction (world coordinates)
+    Vec3d         x_dir, y_dir;                      // In scene direction vectors (parallel to image plane) (world coordinates)
+    Vec3d         start_point;                       // Center of the Image Plane (world coordinates)
+    Vec3d         current_point;                     // current rendering point on the image plane (world coordinates)
+    double        imagePlanewidth, imagePlaneHeight; // Size of the image plane (world coordinates)
+    double        focalDistance;                     // distance eyepos to image plane
+    double        fovy;                              // Field of view in y direction
+    double        aspect;                            // Aspect ratio of the image
+    double        imageWidth,imageHeight;            // Height and width of the image;
+    Ray           ray;                               // Ray shot into the scene
+    Color         col;                               // color returned for current ray
+
+    QTime	execTime;
+    execTime.start();
+
+    // Collect all light sources in the scene
+    lights_.clear();
+    for ( PluginFunctions::ObjectIterator o_It(PluginFunctions::TARGET_OBJECTS, DataType( DATA_LIGHT) ) ; o_It != PluginFunctions::objectsEnd(); ++o_It) {
+        // Get the associated light source data
+        LightSource* light = PluginFunctions::lightSource(*o_It);
+        if ( !light )
+            continue;
+
+        lights_.push_back(*light);
+    }
+
+    // Raytrace the image (Iterate over all pixels and shoot rays into scene)
+    for (unsigned int y = 0; y < imageHeight; ++y)
+    {
+        for (unsigned int x = 0; x < imageWidth; ++x)
+        {
+            // Cancel processing if requested by user
+            if ( cancel_ ) {
+                return;
+            }
+
+            // Set the current iteration in the progress
+            emit setJobState("RayTracingThread",y * imageWidth + x);
+
+            // compute the current point on the image plane
+            current_point = start_point + x_dir * x - y_dir * y;
+
+            // setup current ray direction
+            ray.direction = (current_point - ray.origin).normalize();
+
+            // trace the ray through the scene, get its color
+            col = trace(ray, 0);
+
+            // clamp color values
+            col.minimize(Color(1.0, 1.0, 1.0, 1.0));
+            col.maximize(Color(0.0, 0.0, 0.0, 1.0));
+
+            // Set the returned pixel color in the image
+            pixelColor.setRgbF(col[0],col[1],col[2]);
+            image_.setPixel( QPoint(x,y) , pixelColor.rgb() );
+        }
+    }
+
+    std::cout << "RayTracing: " << (double)execTime.elapsed() / 1000 << " seconds" << std::endl;
+
+}
+
+
+InteractiveMCPTPlugin::CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
+{
+    double fovy = PluginFunctions::viewerProperties().glState().fovy();
+    Vec3d viewingDirection = PluginFunctions::viewingDirection();
+    double aspect           = PluginFunctions::viewerProperties().glState().aspect();
+    double focalDistance = 1.0;
+    double imagePlaneHeight = 2.0 * focalDistance * tan( 0.5 * fovy );
+    double imagePlanewidth  = imagePlaneHeight * aspect;
+    Vec3d x_dir = ( viewingDirection % PluginFunctions::upVector() ).normalize() * imagePlanewidth / image_.width();
+    Vec3d y_dir = ( x_dir % viewingDirection).normalize() * imagePlaneHeight / image_.height();
+    Vec3d start_point = PluginFunctions::eyePos() + viewingDirection - 0.5 * image_.width() * x_dir + 0.5 * image_.height() * y_dir;
+
+    CameraInfo cam = {x_dir, y_dir, start_point, PluginFunctions::eyePos()};
+    return cam;
+}
+
+void InteractiveMCPTPlugin::globalRender()
+{
+    CameraInfo cam = computeCameraInfo();
+
+
+    const int imageWidth  = image_.width();
+    const int imageHeight = image_.height();
+    for (int y = 0; y < imageHeight; ++y)
+    {
+        for (int x = 0; x < imageWidth; ++x)
+        {
+            // Cancel processing if requested by user
+            if ( cancel_ ) {
+                return;
+            }
+            for (int i = 0; i < raysPerPixel; i++) tracePixel(x,y, cam);
+        }
+    }
+}
+
+
+
 void InteractiveMCPTPlugin::launchThread() {
 
 	cancel_ = false;
@@ -89,7 +205,7 @@ void InteractiveMCPTPlugin::launchThread() {
     OpenFlipperThread* tread = new OpenFlipperThread("MCPT Thread");
 
 	// Connect the appropriate signals
-	connect(tread, SIGNAL(function()), this, SLOT(raytrace()), Qt::DirectConnection);
+    connect(tread, SIGNAL(function()), this, SLOT(globalRender()), Qt::DirectConnection);
 
 	// Connect the appropriate signals
 	connect(tread, SIGNAL(finished(QString)), this, SIGNAL(finishJob(QString)), Qt::DirectConnection);
@@ -100,7 +216,7 @@ void InteractiveMCPTPlugin::launchThread() {
 
 	// Tell core about my thread
 	// Note: The last parameter determines whether the thread should be blocking
-	emit startJob( "RayTracingThread", "RayTracing" , 0 , maxIterations , false);
+    emit startJob( "MCPT Thread", "MCPT" , 0 , maxIterations , false);
 
 	// Start internal QThread
 	tread->start();
@@ -112,14 +228,7 @@ void InteractiveMCPTPlugin::launchThread() {
 	updateTimer_.setInterval(1000);
 	updateTimer_.setSingleShot(false);
 	connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
-	updateTimer_.start();
-
-	// Resize the widget to the image and show it
-	imageLabel_->resize(PluginFunctions::viewerProperties().glState().viewport_width(),PluginFunctions::viewerProperties().glState().viewport_height());
-
-	// First redraw to initialize the widget
-	updateImageWidget();
-    imageWindow->show();
+    updateTimer_.start();
 }
 
 void InteractiveMCPTPlugin::canceledJob(QString /*_jobId*/ ) {
@@ -149,100 +258,6 @@ void InteractiveMCPTPlugin::updateImageWidget() {
 
 }
 
-/** \brief Main loop of the raytracer
- *
- * This function contains the main loop of the raytracer and the setup of the shot rays
- */
-void InteractiveMCPTPlugin::raytrace() {
-	QColor        pixelColor(0,0,0);                 // Variable for color transformation to QImage (don't use!)
-	Vec3d         viewingDirection;                  // Viewing direction (world coordinates)
-	Vec3d         x_dir, y_dir;                      // In scene direction vectors (parallel to image plane) (world coordinates)
-	Vec3d         start_point;                       // Center of the Image Plane (world coordinates)
-	Vec3d         current_point;                     // current rendering point on the image plane (world coordinates)
-	double        imagePlanewidth, imagePlaneHeight; // Size of the image plane (world coordinates)
-	double        focalDistance;                     // distance eyepos to image plane
-	double        fovy;                              // Field of view in y direction
-	double        aspect;                            // Aspect ratio of the image
-	double        imageWidth,imageHeight;            // Height and width of the image;
-	Ray           ray;                               // Ray shot into the scene
-	Color         col;                               // color returned for current ray
-
-	QTime	execTime;
-	execTime.start();
-
-
-	// Get field of view in y direction from the viewer
-	fovy = PluginFunctions::viewerProperties().glState().fovy();
-
-	// Get the viewing direction and aspect ratio
-	viewingDirection = PluginFunctions::viewingDirection();
-	aspect           = PluginFunctions::viewerProperties().glState().aspect();
-
-	// Set the distance to the image plane to 1.0 (This value does not really matter as we only need the direction)
-	focalDistance = 1.0;
-
-	// Width & height of the image plane in world coordinates
-	imagePlaneHeight = 2.0 * focalDistance * tan( 0.5 * fovy );
-	imagePlanewidth  = imagePlaneHeight * aspect;
-
-	// setup direction vectors at the image plane
-	// These vectors are parallel to image plane in world coordinates and have the length of one pixel
-	// If you go one pixel up in the image, you have to go one step into the direction of the computed vector
-	// to get the corresponding point on the image plane in world coordinates.
-	x_dir = ( viewingDirection % PluginFunctions::upVector() ).normalize() * imagePlanewidth / imageWidth;
-	y_dir = ( x_dir % viewingDirection).normalize() * imagePlaneHeight / imageHeight;
-
-	// Get the start point on the image plane.
-	// The rays start at the eye pos and go into the direction of the point on the image plane.
-	start_point = PluginFunctions::eyePos() + viewingDirection - 0.5f * imageWidth * x_dir + 0.5f * imageHeight * y_dir;
-	ray.origin  = PluginFunctions::eyePos();
-
-	// Collect all light sources in the scene
-	lights_.clear();
-	for ( PluginFunctions::ObjectIterator o_It(PluginFunctions::TARGET_OBJECTS, DataType( DATA_LIGHT) ) ; o_It != PluginFunctions::objectsEnd(); ++o_It) {
-		// Get the associated light source data
-		LightSource* light = PluginFunctions::lightSource(*o_It);
-		if ( !light )
-			continue;
-
-		lights_.push_back(*light);
-	}
-
-	// Raytrace the image (Iterate over all pixels and shoot rays into scene)
-	for (unsigned int y = 0; y < imageHeight; ++y)
-	{
-		for (unsigned int x = 0; x < imageWidth; ++x)
-		{
-			// Cancel processing if requested by user
-			if ( cancel_ ) {
-				return;
-			}
-
-			// Set the current iteration in the progress
-			emit setJobState("RayTracingThread",y * imageWidth + x);
-
-			// compute the current point on the image plane
-			current_point = start_point + x_dir * x - y_dir * y;
-
-			// setup current ray direction
-			ray.direction = (current_point - ray.origin).normalize();
-
-			// trace the ray through the scene, get its color
-			col = trace(ray, 0);
-
-			// clamp color values
-			col.minimize(Color(1.0, 1.0, 1.0, 1.0));
-			col.maximize(Color(0.0, 0.0, 0.0, 1.0));
-
-			// Set the returned pixel color in the image
-			pixelColor.setRgbF(col[0],col[1],col[2]);
-			image_.setPixel( QPoint(x,y) , pixelColor.rgb() );
-		}
-	}
-
-	std::cout << "RayTracing: " << (double)execTime.elapsed() / 1000 << " seconds" << std::endl;
-
-}
 
 /** \brief compute color from ray
  *
@@ -660,7 +675,6 @@ void InteractiveMCPTPlugin::clearImage()
     image_ = QImage(imageWidth,imageHeight,QImage::Format_RGB32);
     image_.fill(Qt::black);
 }
-
 
 bool InteractiveMCPTPlugin::intersectBoundingBox(const Vec3d& bb_min , const Vec3d& bb_max ,const Ray& _ray){
 
