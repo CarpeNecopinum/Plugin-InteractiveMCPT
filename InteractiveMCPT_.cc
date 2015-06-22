@@ -23,7 +23,7 @@ void InteractiveMCPTPlugin::initializePlugin()
 	toolboxLayout->addWidget(raytraceButtonClassic);
 
 	// Add the Toolbar to OpenFlipper Core
-    emit addToolbox("Raytracer", toolbox, 0);
+    emit addToolbox("Interactive MCPT", toolbox, 0);
 
     imageWindow = new QWidget(0);
     imageWindow->setWindowTitle("InteractiveMCPT");
@@ -131,6 +131,7 @@ void InteractiveMCPTPlugin::globalRender()
             }
             for (int i = 0; i < raysPerPixel; i++) tracePixel(x,y, cam);
         }
+        emit setJobState("MCPT Thread", y * imageWidth);
     }
 }
 
