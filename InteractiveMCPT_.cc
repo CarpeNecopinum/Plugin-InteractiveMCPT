@@ -12,7 +12,10 @@
 
 
 void InteractiveMCPTPlugin::initializePlugin()
-{
+{    
+    mAccumulatedColor = 0;
+    mSamples = 0;
+
 	// Create the toolbox
 	QWidget* toolbox = new QWidget();
 
@@ -95,7 +98,9 @@ void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y, const CameraInfo& cam
     color.minimize(Color(1.0, 1.0, 1.0, 1.0));
     color.maximize(Color(0.0, 0.0, 0.0, 1.0));
 
-    image_.setPixel(QPoint(x,y), QColor(color[0] * 255, color[1] * 255, color[2] * 255).rgb());
+    size_t index = x + y * image_.width();
+    mAccumulatedColor[index] += Vec3d(color[0], color[1], color[2]);
+    mSamples[index]++;
 }
 
 InteractiveMCPTPlugin::CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
@@ -611,6 +616,17 @@ void InteractiveMCPTPlugin::clearImage()
     int imageHeight = PluginFunctions::viewerProperties().glState().viewport_height();
 
     // Create a QImage of the viewer size and clear it
+    if (mAccumulatedColor) delete[] mAccumulatedColor;
+    Vec3d zeroVec(0.,0.,0.);
+    mAccumulatedColor = new Vec3d[imageWidth * imageHeight];
+    for (size_t y = 0; y < imageHeight; ++y)
+        for (size_t x = 0; x < imageWidth; ++x)
+            mAccumulatedColor[x + y * imageWidth] = zeroVec;
+
+    if (mSamples) delete[] mSamples;
+    mSamples = new uint32_t[imageWidth * imageHeight];
+    memset(mSamples, 0, imageWidth * imageHeight * sizeof(uint32_t));
+
     image_ = QImage(imageWidth,imageHeight,QImage::Format_RGB32);
     image_.fill(Qt::black);
 }

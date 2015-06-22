@@ -170,6 +170,9 @@ protected:
       };
 
       CameraInfo computeCameraInfo() const;
+      Vec3d* mAccumulatedColor;
+      uint32_t* mSamples;
+
 private:
      QTimer updateTimer_;
 
