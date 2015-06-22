@@ -85,80 +85,18 @@ void InteractiveMCPTPlugin::openWindow() {
     imageWindow->show();
 }
 
-/** \brief Main loop of the raytracer
- *
- * This function contains the main loop of the raytracer and the setup of the shot rays
- */
 
 void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y, const CameraInfo& cam)
 {
+    Vec3d current_point = cam.image_plane_start + cam.x_dir * x - cam.y_dir * y;
+    Ray ray = {cam.eye_point, (current_point - ray.origin).normalize()};
 
+    Color color = trace(ray, 0);
+    color.minimize(Color(1.0, 1.0, 1.0, 1.0));
+    color.maximize(Color(0.0, 0.0, 0.0, 1.0));
+
+    image_.setPixel(QPoint(x,y), QColor(color[0] * 255, color[1] * 255, color[2] * 255).rgb());
 }
-
-void InteractiveMCPTPlugin::raytrace() {
-    QColor        pixelColor(0,0,0);                 // Variable for color transformation to QImage (don't use!)
-    Vec3d         viewingDirection;                  // Viewing direction (world coordinates)
-    Vec3d         x_dir, y_dir;                      // In scene direction vectors (parallel to image plane) (world coordinates)
-    Vec3d         start_point;                       // Center of the Image Plane (world coordinates)
-    Vec3d         current_point;                     // current rendering point on the image plane (world coordinates)
-    double        imagePlanewidth, imagePlaneHeight; // Size of the image plane (world coordinates)
-    double        focalDistance;                     // distance eyepos to image plane
-    double        fovy;                              // Field of view in y direction
-    double        aspect;                            // Aspect ratio of the image
-    double        imageWidth,imageHeight;            // Height and width of the image;
-    Ray           ray;                               // Ray shot into the scene
-    Color         col;                               // color returned for current ray
-
-    QTime	execTime;
-    execTime.start();
-
-    // Collect all light sources in the scene
-    lights_.clear();
-    for ( PluginFunctions::ObjectIterator o_It(PluginFunctions::TARGET_OBJECTS, DataType( DATA_LIGHT) ) ; o_It != PluginFunctions::objectsEnd(); ++o_It) {
-        // Get the associated light source data
-        LightSource* light = PluginFunctions::lightSource(*o_It);
-        if ( !light )
-            continue;
-
-        lights_.push_back(*light);
-    }
-
-    // Raytrace the image (Iterate over all pixels and shoot rays into scene)
-    for (unsigned int y = 0; y < imageHeight; ++y)
-    {
-        for (unsigned int x = 0; x < imageWidth; ++x)
-        {
-            // Cancel processing if requested by user
-            if ( cancel_ ) {
-                return;
-            }
-
-            // Set the current iteration in the progress
-            emit setJobState("RayTracingThread",y * imageWidth + x);
-
-            // compute the current point on the image plane
-            current_point = start_point + x_dir * x - y_dir * y;
-
-            // setup current ray direction
-            ray.direction = (current_point - ray.origin).normalize();
-
-            // trace the ray through the scene, get its color
-            col = trace(ray, 0);
-
-            // clamp color values
-            col.minimize(Color(1.0, 1.0, 1.0, 1.0));
-            col.maximize(Color(0.0, 0.0, 0.0, 1.0));
-
-            // Set the returned pixel color in the image
-            pixelColor.setRgbF(col[0],col[1],col[2]);
-            image_.setPixel( QPoint(x,y) , pixelColor.rgb() );
-        }
-    }
-
-    std::cout << "RayTracing: " << (double)execTime.elapsed() / 1000 << " seconds" << std::endl;
-
-}
-
 
 InteractiveMCPTPlugin::CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
 {
