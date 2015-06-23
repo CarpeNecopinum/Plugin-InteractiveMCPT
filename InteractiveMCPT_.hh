@@ -108,7 +108,7 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
    * The _depth parameter restricts the number of recursions for mirrored rays.
    * See source file for implementation details
    */
-   Color trace(const Ray& _ray, unsigned int _depth);
+   Color trace(const Ray& _ray, unsigned int _recursions);
 
    /** \brief Compute a reflection ray
    *
@@ -173,6 +173,15 @@ protected:
       Vec3d* mAccumulatedColor;
       uint32_t* mSamples;
 
+
+      struct Intersection
+      {
+          Vec3d position;
+          Vec3d normal;
+          double depth;
+          Material material;
+      };
+      Intersection intersectScene(const Ray &_ray);
 private:
      QTimer updateTimer_;
 

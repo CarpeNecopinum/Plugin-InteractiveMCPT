@@ -47,7 +47,7 @@ void InteractiveMCPTPlugin::initializePlugin()
     layout->addLayout(sidebox);
 
     QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",imageWindow);
-    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
+    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(launchThread()));
     sidebox->addWidget(globalRenderButton);
 
     // Input: Rays per Pixel
@@ -91,12 +91,21 @@ void InteractiveMCPTPlugin::openWindow() {
 
 void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y, const CameraInfo& cam)
 {
-    Vec3d current_point = cam.image_plane_start + cam.x_dir * x - cam.y_dir * y;
+    /* randomly shift the ray direction for AA */
+    double xd = x + double(std::rand()) / double(RAND_MAX) - 0.5;
+    double yd = y + double(std::rand()) / double(RAND_MAX) - 0.5;
+
+    /* Ray Setup */
+    Vec3d current_point = cam.image_plane_start + cam.x_dir * xd - cam.y_dir * yd;
     Ray ray = {cam.eye_point, (current_point - ray.origin).normalize()};
+
+    /* Actual Path Tracing */
 
     Color color = trace(ray, 0);
     color.minimize(Color(1.0, 1.0, 1.0, 1.0));
     color.maximize(Color(0.0, 0.0, 0.0, 1.0));
+
+    /* Write to accumulated Buffer + Sample counter */
 
     size_t index = x + y * image_.width();
     mAccumulatedColor[index] += Vec3d(color[0], color[1], color[2]);
@@ -136,8 +145,9 @@ void InteractiveMCPTPlugin::globalRender()
             }
             for (int i = 0; i < raysPerPixel; i++) tracePixel(x,y, cam);
         }
-        emit setJobState("MCPT Thread", y * imageWidth);
+        emit setJobState("MCPT Thread", (y+1) * imageWidth);
     }
+    emit finishJob("MCPT Thread");
 }
 
 
@@ -146,14 +156,14 @@ void InteractiveMCPTPlugin::launchThread() {
 
 	cancel_ = false;
 
-    OpenFlipperThread* tread = new OpenFlipperThread("MCPT Thread");
+    OpenFlipperThread* thread = new OpenFlipperThread("MCPT Thread");
 
 	// Connect the appropriate signals
-    connect(tread, SIGNAL(function()), this, SLOT(globalRender()), Qt::DirectConnection);
+    connect(thread, SIGNAL(function()), this, SLOT(globalRender()), Qt::DirectConnection);
 
 	// Connect the appropriate signals
-	connect(tread, SIGNAL(finished(QString)), this, SIGNAL(finishJob(QString)), Qt::DirectConnection);
-	connect(tread, SIGNAL(finished(QString)), this, SLOT(threadFinished()), Qt::DirectConnection);
+    connect(thread, SIGNAL(finished(QString)), this, SIGNAL(finishJob(QString)), Qt::DirectConnection);
+    connect(thread, SIGNAL(finished(QString)), this, SLOT(threadFinished()), Qt::DirectConnection);
 
 	// Calculate number of iterations for progress indicator
 	int maxIterations = PluginFunctions::viewerProperties().glState().viewport_width() * PluginFunctions::viewerProperties().glState().viewport_height();
@@ -163,13 +173,13 @@ void InteractiveMCPTPlugin::launchThread() {
     emit startJob( "MCPT Thread", "MCPT" , 0 , maxIterations , false);
 
 	// Start internal QThread
-	tread->start();
+    thread->start();
 
 	// Start actual processing of job
-	tread->startProcessing();
+    thread->startProcessing();
 
 	// Update widget every second
-	updateTimer_.setInterval(1000);
+    updateTimer_.setInterval(2000);
 	updateTimer_.setSingleShot(false);
 	connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
     updateTimer_.start();
@@ -193,8 +203,21 @@ void InteractiveMCPTPlugin::threadFinished() {
 
 void InteractiveMCPTPlugin::updateImageWidget() {
 
-	// update the widget
 	if ( ! cancel_ ) {
+        // Generate Image from accumulated buffer and sample counter
+        for (size_t y = 0; y < image_.height(); ++y)
+        {
+            for (size_t x = 0; x < image_.width(); ++x)
+            {
+                size_t index = x + image_.width() * y;
+                Vec3d color = mAccumulatedColor[index];
+                color /= mSamples[index];
+
+                image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());
+            }
+        }
+
+        // update the widget
 		imageLabel_->setPixmap(QPixmap::fromImage(image_));
 		imageLabel_->resize(image_.size());
         imageWindow->adjustSize();
@@ -202,155 +225,45 @@ void InteractiveMCPTPlugin::updateImageWidget() {
 
 }
 
+InteractiveMCPTPlugin::Intersection InteractiveMCPTPlugin::intersectScene(const Ray& _ray)
+{
+    Intersection result;
+    result.depth = FLT_MAX;
+    for(PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH | DATA_SPHERE) ) ; o_It != PluginFunctions::objectsEnd(); ++o_It) {
+        Intersection next;
+        if (intersect(*( *o_It), _ray, next.position, next.normal, next.depth))
+        {
+            if (next.depth < result.depth)
+            {
+                result = next;
+                result.material = o_It->materialNode()->material();
+            }
+        }
+    }
+    return result;
+}
 
-/** \brief compute color from ray
- *
- * This function shoots a ray into the scene and computes the visible color along this ray.
- * The _depth parameter restricts the number of recursions for mirrored rays.
- */
-Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _depth) {
 
-	// Do at most 3 recursive steps for mirorred contributions
-	unsigned int max_depth = 3;
+Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
+    unsigned int max_depth = 3;
+    Color background(0.0f,0.0f,0.0f,1.0f);
 
-	// Set background color to black
-	Color background(0.0f,0.0f,0.0f,1.0f);
-
-	// Stop if maximum recursion depth is reached
-	if (_depth > max_depth)
+    if (_recursions > max_depth)
 		return background;
 
-	Vec3d          point, normal;              // Temporary variables for data at ray/object intersection point
-	double         parameter;                  // Temporary variable for parametric depth of intersection point (distance from current point to intersection point )
+    Intersection hit = intersectScene(_ray);
 
-	Vec3d          intersectionPoint;          // Intersection between ray and object
-	Vec3d          intersectionNormal;         // Normal at intersection point
-	double         intersectionDepth(FLT_MAX); // parametric depth along intersection ray (initialized to max as we search for the closest intersection)
-	TriMeshObject* intersectedObject(0);       // last intersected Object
-	Material       objectMaterial;             // Material of last intersected object
-
-	// Iterate over all meshes in the scene and check if they get intersected
-	// The intersection point/normal, parameter and object are initialized here
-	for(PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH | DATA_SPHERE) ) ; o_It != PluginFunctions::objectsEnd(); ++o_It) {
-
-		// Intersect current ray with the current mesh/sphere and get normal, color, and point of intersection. Additionally check if the ray
-		// intersects the current object earlier than any other object.
-		if (intersect(*( *o_It), _ray, point, normal, parameter) && parameter < intersectionDepth )
-		{
-			intersectionDepth  = parameter;
-			objectMaterial     = o_It->materialNode()->material();
-			intersectionPoint  = point;
-			intersectionNormal = normal;
-		}
-
-	}
-
-	// If no intersection is found -> return background color
-	if (intersectionDepth == FLT_MAX)
-		return background;
+    if (hit.depth == FLT_MAX) return background;
 
 	// backfaces are black
-	if( (intersectionNormal | (-_ray.direction)) < 0.0 )
-		return background;
+    if( (hit.normal | (-_ray.direction)) < 0.0 ) return background;
 
 	// Compute the reflected ray at the intersection point (This function has to be implemented in the exercise. See below)
-	Ray reflectedRay(reflect(_ray, intersectionPoint, intersectionNormal));
-
-	// ==================================================================
-	// These variables have to be computed in the exercise
-	// ==================================================================
-
-	Ray            lightRay;                             // Use this variable to set up the ray for shadow testing
-	bool           inShadow;                             // Use this variable to mark if a point is in shadow
-	double         dot;                                  // dot product between Light direction and intersection normal
-	Color          reflectedColor(0.0f,0.0f,0.0f,1.0f);  // Sum up the different components of the reflected color in this varialble
-	Color          mirroredColor(0.0f,0.0f,0.0f,1.0f);   // Sum up the mirrored color in this variable
-
-	// Compute reflected contribution of each light source
-	for ( unsigned int i = 0 ; i < lights_.size() ; ++i ) {
-
-		LightSource& light = lights_[i];
-
-		// Compute the direction of the incoming light and the distance from the intersection point to the light source
-		Vec3d  lightDirection = (light.position() - intersectionPoint );
-		double lightDistance  = lightDirection.norm();
-
-		// Normalize light direction vector
-		lightDirection.normalize();
-
-			// INSERT CODE
-			// reflected contribution of each light source:
-			//    point in shadow?
-			//    local lighting: ambient, diffuse, specular term
-			//
-			// Access to variables:
-			//
-			//   light.position()
-			//   light.ambientColor()
-			//   light.diffuseColor()
-			//   light.specularColor()
-			//
-			//   objectMaterial.ambientColor()
-			//   objectMaterial.diffuseColor()
-			//   objectMaterial.specularColor()
-			//   objectMaterial.shininess()
-			//
-			//   Intersection with all objects: see ObjectIterator above
-			//
-			//--- start strip ---
-
-            lightRay.direction = lightDirection.normalized();
-            lightRay.origin = intersectionPoint;
-
-            // Shadow test
-            inShadow = false;
-            for(PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH | DATA_SPHERE) ) ; o_It != PluginFunctions::objectsEnd(); ++o_It) {
-                Vec3d dummyPoint, dummyNormal;
-                double occluderDistance;
-                if (intersect(*( *o_It), lightRay, dummyPoint, dummyNormal, occluderDistance)  && (occluderDistance < lightDistance))
-                {
-                    inShadow = true;
-                    break;
-                }
-            }
-
-            // If the ray comes from the back, the face shadows itself
-            if ((lightRay.direction | normal) < 0.0) inShadow = true;
-
-            // Ambient Term, regardless of shadowing
-            reflectedColor += light.ambientColor() * objectMaterial.ambientColor();
-
-            // Diffuse and specular term, only if seen by lightsource, no attenuation by distance
-            if (!inShadow)
-            {
-                // Diffuse Term
-                double diffuseFactor = dot = (lightDirection | normal);
-                reflectedColor += (light.diffuseColor() * objectMaterial.diffuseColor()) * diffuseFactor;
-
-                // Specular Term
-                double specularFactor = std::pow(reflectedRay.direction | lightRay.direction, objectMaterial.shininess());
-                reflectedColor += (light.specularColor() * objectMaterial.specularColor()) * specularFactor;
-            }
+    Ray reflectedRay(reflect(_ray, hit.position, hit.normal));
 
 
-			//--- end strip ---
-	}
-
-
-	// INSERT CODE
-	// mirror effects: recursive trace()
-	//
-	// objectMaterial.reflectance()
-	//--- start strip ---
-
-    mirroredColor = trace(reflectedRay, _depth + 1);
-
-
-	//--- end strip ---
-
-	double r = objectMaterial.reflectance();
-	return (reflectedColor * (1.0 - r) + mirroredColor * r);
-
+    // Just give the material diffuse Color for now...
+    return hit.material.diffuseColor();
 }
 
 /** \brief Intersect ray with  object
@@ -391,21 +304,7 @@ bool InteractiveMCPTPlugin::intersect(BaseObjectData&      _object,
 		    _intersection = ip;
 		    _normal       = mesh.normal(*f_it);
 		  }
-		}
-		//TriMeshObject* mesh_object = PluginFunctions::triMeshObject(&_object);
-		//TriMesh& mesh = *(mesh_object->mesh() );
-
-		//TriMeshObject::OMTriangleBSP* bsp = mesh_object->requestTriangleBsp();
-
-		//TriMeshObject::OMTriangleBSP::RayCollision rc = bsp->nearestRaycollision(_ray.origin + EPS*_ray.direction, _ray.direction);
-		//TriMeshObject::OMTriangleBSP::RayCollision rc = bsp->directionalRaycollision(_ray.origin + EPS*_ray.direction, _ray.direction);
-
-		//if(!rc.empty()) {
-		//	TriMesh::FaceHandle handle = rc.front().first;
-		//	_t = rc.front().second - EPS;
-		//	_normal = mesh.normal(handle);
-		//	_intersection = _ray.origin + _t * _ray.direction;
-		//}
+        }
 
 	} else  if ( PluginFunctions::sphereObject(&_object)  ) {
 		SphereNode* sphere = PluginFunctions::sphereNode(&_object);
@@ -464,17 +363,6 @@ InteractiveMCPTPlugin::intersectTriangle( const Face&        _face,
 		Vec3d&             _intersection,
 		double&            _t ) const
 {
-	// INSERT CODE
-	// intersect _ray with _face with _normal
-	// store intersection point in _intersection
-	// store ray parameter in _t
-	// return true if intersection occurs AND t > EPS
-	//
-	// Hint: Use the barycentric coordinate function : bary_coord(_intersection, _face.p0, _face.p1, _face.p2, bary);
-	//--- start strip ---
-        
-    // Project _ray.origin into the Triangle's plane as _intersection
-
     _t = ((_face.p0 - _ray.origin) | _normal) / (_normal | _ray.direction);
     if (_t <= EPS) return false;
 
@@ -484,8 +372,6 @@ InteractiveMCPTPlugin::intersectTriangle( const Face&        _face,
     if (bary_coord(_intersection, _face.p0, _face.p1, _face.p2, bary))
         if (bary[0] > 0. && bary[1] > 0. && bary[2] > 0.)
             return true;
-
-	//--- end strip ---
 
 	return false;
 }
@@ -503,14 +389,6 @@ bool InteractiveMCPTPlugin::intersectSphere( const Vec3d&      _center,
 		Vec3d&            _normal,
 		double&           _t ) const
 {
-	// INSERT CODE
-	// intersect _ray with sphere ( at _center with radius _radius)
-	// store intersection point in _intersection
-	// store normal at intersection point in _normal
-	// store ray parameter in _t
-	// return true if intersection occurs AND t > EPS
-	//--- start strip ---
-
     //Project the ray origin onto the normal plane around the sphere center
     _t = (_center - _ray.origin) | _ray.direction; // Temporary _t to the plane
     Vec3d relative = _center - (_ray.origin + _ray.direction * _t);
@@ -529,7 +407,6 @@ bool InteractiveMCPTPlugin::intersectSphere( const Vec3d&      _center,
 
     if (_t >= EPS) return true;
 
-	//--- end strip ---
 	return false;
 }
 
@@ -661,5 +538,5 @@ bool InteractiveMCPTPlugin::intersectBoundingBox(const Vec3d& bb_min , const Vec
 
 
 #if QT_VERSION < 0x050000
-  Q_EXPORT_PLUGIN2( interactiveMCPTplugin , InteractiveMCPT );
+  Q_EXPORT_PLUGIN2( interactiveMCPTplugin , InteractiveMCPTPlugin );
 #endif
