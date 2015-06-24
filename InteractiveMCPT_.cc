@@ -102,8 +102,6 @@ void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y, const CameraInfo& cam
     /* Actual Path Tracing */
 
     Color color = trace(ray, 0);
-    color.minimize(Color(1.0, 1.0, 1.0, 1.0));
-    color.maximize(Color(0.0, 0.0, 0.0, 1.0));
 
     /* Write to accumulated Buffer + Sample counter */
 
@@ -213,6 +211,9 @@ void InteractiveMCPTPlugin::updateImageWidget() {
                 Vec3d color = mAccumulatedColor[index];
                 color /= mSamples[index];
 
+                color.maximize(Vec3d(0.0, 0.0, 0.0));
+                color.minimize(Vec3d(1.0, 1.0, 1.0));
+
                 image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());
             }
         }
@@ -244,26 +245,89 @@ InteractiveMCPTPlugin::Intersection InteractiveMCPTPlugin::intersectScene(const 
 }
 
 
+// Return vector of 'number' normalized directions with cos-theta weighted distribution on the unit hemisphere oriented according to normal 'n'
+std::vector<Vec3d> InteractiveMCPTPlugin::randomDirectionsCosTheta(int number, Vec3d n) {
+    std::vector<Vec3d> dirs(number, Vec3d(1.0, 0.0, 0.0));
+    // Hint: Generate random number between -1 and 1 by "(((double)rand()) / ((double)RAND_MAX) - 0.5) * 2.0"
+    // Note: Insert a generated direction "d" into vector dirs by "dirs[s] = d"
+    Vec3d  x_dir, y_dir, dir;
+
+    n.normalize();
+    // local coord system
+    y_dir = clampToAxis(n);
+
+    x_dir = n % y_dir;
+    y_dir = x_dir % n;
+    x_dir.normalize();
+    y_dir.normalize();
+    /// --- start strip --- ///
+    int counter = 0;
+    while(counter < number){
+        double x = (((double)rand()) / ((double)RAND_MAX) - 0.5) * 2.0;
+        double y = (((double)rand()) / ((double)RAND_MAX) - 0.5) * 2.0;
+        double r2 = x * x + y * y;
+        if(r2 < 1.0){
+            dirs[counter] = x * x_dir + y * y_dir + sqrt(1 - r2) * n;
+            counter++;
+        }
+    }
+    /// --- end strip --- ///
+    return dirs;
+}
+
+Vec3d InteractiveMCPTPlugin::clampToAxis(const Vec3d &n) {
+    Vec3d res;
+    if(std::fabs(n[0]) > std::fabs(n[1]) && std::fabs(n[0]) > std::fabs(n[2])) {
+        res = Vec3d(0,0,1);
+    } else if(std::fabs(n[1]) > std::fabs(n[0]) && std::fabs(n[1]) > std::fabs(n[2])) {
+        res = Vec3d(1,0,0);
+    } else { //(std::fabs(n[2]) > std::fabs(n[0]) && std::fabs(n[2]) > std::fabs(n[1])) {
+        res = Vec3d(0,1,0);
+    }
+    return res;
+}
+
+Color InteractiveMCPTPlugin::isotropicBRDF(const Material& objectMaterial, const Ray& incommingRay, const Ray& outgoingRay, const Vec3d& intersectionNormal) {
+  Ray reflectedRay(reflect(incommingRay, Vec3d(0, 0, 0), intersectionNormal));
+    double cos_theta = intersectionNormal | outgoingRay.direction;
+    if(cos_theta < 0) {
+        cos_theta = 0.0;
+    }
+    double shin = objectMaterial.shininess();
+    shin = std::min(shin, 1000.0);
+    shin = std::max(shin, 1.0);
+    double dot2 = reflectedRay.direction | outgoingRay.direction;
+    double specTerm = 0.0;
+    if(dot2 > 0.0) {
+        specTerm = pow(dot2, shin);
+    }
+    return (
+            (float)cos_theta * objectMaterial.diffuseColor() / M_PI
+            + ((float) ((shin + 1.0) / (2.0 * M_PI) * specTerm) * objectMaterial.specularColor()) );
+}
+
 Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     unsigned int max_depth = 3;
-    Color background(0.0f,0.0f,0.0f,1.0f);
+    Color black(0.0f,0.0f,0.0f,1.0f);
 
     if (_recursions > max_depth)
-		return background;
+        return black;
 
     Intersection hit = intersectScene(_ray);
 
-    if (hit.depth == FLT_MAX) return background;
+    if (hit.depth == FLT_MAX) return black;
+    if( (hit.normal | (-_ray.direction)) < 0.0 ) return black;
 
-	// backfaces are black
-    if( (hit.normal | (-_ray.direction)) < 0.0 ) return background;
+    // Reflectance used for emittance
+    Color emitted = float(hit.material.reflectance()) * Color(1.0f, 1.0f, 1.0f, 0.0f);
 
-	// Compute the reflected ray at the intersection point (This function has to be implemented in the exercise. See below)
-    Ray reflectedRay(reflect(_ray, hit.position, hit.normal));
+    //Ray mirroredRay = reflect(_ray, hit.position, hit.normal);
 
+    Ray reflectedRay = {hit.position, randomDirectionsCosTheta(1, hit.normal).front()};
+    Color brdf = hit.material.diffuseColor() /* / cos_theta * cos_theta */;
+    Color reflected = brdf * trace(reflectedRay, _recursions + 1);
 
-    // Just give the material diffuse Color for now...
-    return hit.material.diffuseColor();
+    return (emitted + reflected);
 }
 
 /** \brief Intersect ray with  object
