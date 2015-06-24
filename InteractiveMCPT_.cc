@@ -15,6 +15,7 @@ void InteractiveMCPTPlugin::initializePlugin()
 {    
     mAccumulatedColor = 0;
     mSamples = 0;
+    settings.samplesPerPixel = 1;
 
 	// Create the toolbox
 	QWidget* toolbox = new QWidget();
@@ -47,7 +48,7 @@ void InteractiveMCPTPlugin::initializePlugin()
     layout->addLayout(sidebox);
 
     QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",imageWindow);
-    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(launchThread()));
+    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
     sidebox->addWidget(globalRenderButton);
 
     // Input: Rays per Pixel
@@ -61,6 +62,9 @@ void InteractiveMCPTPlugin::initializePlugin()
     connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
     sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
 
+    connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
+    updateTimer_.setInterval(1000);
+    updateTimer_.setSingleShot(false);
 }
 
 void InteractiveMCPTPlugin::showContextMenu(QPoint _point) {
@@ -85,19 +89,33 @@ void InteractiveMCPTPlugin::openWindow() {
 
     imageLabel_->resize(PluginFunctions::viewerProperties().glState().viewport_width(),PluginFunctions::viewerProperties().glState().viewport_height());
     updateImageWidget();
+    mCam = computeCameraInfo();
     imageWindow->show();
+
 }
 
 
-void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y, const CameraInfo& cam)
+void InteractiveMCPTPlugin::runJob(RenderJob job)
+{
+    std::vector<Point>::iterator end = job.pixels.end();
+    for (std::vector<Point>::iterator it = job.pixels.begin(); it != end; ++it)
+    {
+        Point& point = *it;
+
+        for (int i = 0; i < job.settings.samplesPerPixel; i++)
+            tracePixel(point.x, point.y);
+    }
+}
+
+void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y)
 {
     /* randomly shift the ray direction for AA */
     double xd = x + double(std::rand()) / double(RAND_MAX) - 0.5;
     double yd = y + double(std::rand()) / double(RAND_MAX) - 0.5;
 
     /* Ray Setup */
-    Vec3d current_point = cam.image_plane_start + cam.x_dir * xd - cam.y_dir * yd;
-    Ray ray = {cam.eye_point, (current_point - ray.origin).normalize()};
+    Vec3d current_point = mCam.image_plane_start + mCam.x_dir * xd - mCam.y_dir * yd;
+    Ray ray = {mCam.eye_point, (current_point - mCam.eye_point).normalize()};
 
     /* Actual Path Tracing */
 
@@ -128,8 +146,8 @@ InteractiveMCPTPlugin::CameraInfo InteractiveMCPTPlugin::computeCameraInfo() con
 
 void InteractiveMCPTPlugin::globalRender()
 {
-    CameraInfo cam = computeCameraInfo();
-
+    RenderJob job;
+    job.settings = settings;
 
     const int imageWidth  = image_.width();
     const int imageHeight = image_.height();
@@ -141,47 +159,22 @@ void InteractiveMCPTPlugin::globalRender()
             if ( cancel_ ) {
                 return;
             }
-            for (int i = 0; i < raysPerPixel; i++) tracePixel(x,y, cam);
+
+            if (job.pixels.size() >= 64) {
+                mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
+                job.pixels.clear();
+            }
+
+            Point point = {x,y};
+            job.pixels.push_back(point);
         }
-        emit setJobState("MCPT Thread", (y+1) * imageWidth);
     }
-    emit finishJob("MCPT Thread");
-}
+    if (!job.pixels.empty())
+        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
 
-
-
-void InteractiveMCPTPlugin::launchThread() {
-
-	cancel_ = false;
-
-    OpenFlipperThread* thread = new OpenFlipperThread("MCPT Thread");
-
-	// Connect the appropriate signals
-    connect(thread, SIGNAL(function()), this, SLOT(globalRender()), Qt::DirectConnection);
-
-	// Connect the appropriate signals
-    connect(thread, SIGNAL(finished(QString)), this, SIGNAL(finishJob(QString)), Qt::DirectConnection);
-    connect(thread, SIGNAL(finished(QString)), this, SLOT(threadFinished()), Qt::DirectConnection);
-
-	// Calculate number of iterations for progress indicator
-	int maxIterations = PluginFunctions::viewerProperties().glState().viewport_width() * PluginFunctions::viewerProperties().glState().viewport_height();
-
-	// Tell core about my thread
-	// Note: The last parameter determines whether the thread should be blocking
-    emit startJob( "MCPT Thread", "MCPT" , 0 , maxIterations , false);
-
-	// Start internal QThread
-    thread->start();
-
-	// Start actual processing of job
-    thread->startProcessing();
-
-	// Update widget every second
-    updateTimer_.setInterval(2000);
-	updateTimer_.setSingleShot(false);
-	connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
     updateTimer_.start();
 }
+
 
 void InteractiveMCPTPlugin::canceledJob(QString /*_jobId*/ ) {
 	emit log(LOGERR, "Cancel Button");
@@ -191,39 +184,50 @@ void InteractiveMCPTPlugin::canceledJob(QString /*_jobId*/ ) {
 void InteractiveMCPTPlugin::threadFinished() {
 
 	// Stop the update timer
-	updateTimer_.stop();
-	updateTimer_.disconnect();
+    //updateTimer_.stop();
+    //updateTimer_.disconnect();
 
-	// Last update of image
+    // Last update of image
 	updateImageWidget();
 
 }
 
 void InteractiveMCPTPlugin::updateImageWidget() {
 
-	if ( ! cancel_ ) {
-        // Generate Image from accumulated buffer and sample counter
-        for (size_t y = 0; y < image_.height(); ++y)
+    std::cout << "Ping" << std::endl;
+    // Generate Image from accumulated buffer and sample counter
+    for (size_t y = 0; y < image_.height(); ++y)
+    {
+        for (size_t x = 0; x < image_.width(); ++x)
         {
-            for (size_t x = 0; x < image_.width(); ++x)
-            {
-                size_t index = x + image_.width() * y;
-                Vec3d color = mAccumulatedColor[index];
-                color /= mSamples[index];
+            size_t index = x + image_.width() * y;
+            Vec3d color = mAccumulatedColor[index];
+            color /= mSamples[index];
 
-                color.maximize(Vec3d(0.0, 0.0, 0.0));
-                color.minimize(Vec3d(1.0, 1.0, 1.0));
+            color.maximize(Vec3d(0.0, 0.0, 0.0));
+            color.minimize(Vec3d(1.0, 1.0, 1.0));
 
-                image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());
-            }
+            image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());
         }
+    }
 
-        // update the widget
-		imageLabel_->setPixmap(QPixmap::fromImage(image_));
-		imageLabel_->resize(image_.size());
-        imageWindow->adjustSize();
-	}
+    // update the widget
+    imageLabel_->setPixmap(QPixmap::fromImage(image_));
+    imageLabel_->resize(image_.size());
+    imageWindow->adjustSize();
 
+    // update Job queue
+
+    for (std::vector<QFuture<void> >::iterator it = mRunningFutures.begin();
+         it != mRunningFutures.end();)
+    {
+        if (it->isFinished()) {
+            it = mRunningFutures.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (mRunningFutures.empty()) updateTimer_.stop();
 }
 
 InteractiveMCPTPlugin::Intersection InteractiveMCPTPlugin::intersectScene(const Ray& _ray)
@@ -324,9 +328,8 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     //Ray mirroredRay = reflect(_ray, hit.position, hit.normal);
 
     Ray reflectedRay = {hit.position, randomDirectionsCosTheta(1, hit.normal).front()};
-    Color brdf = hit.material.diffuseColor() /* / cos_theta * cos_theta */;
-    Color reflected = brdf * trace(reflectedRay, _recursions + 1);
-
+    double cos_theta = hit.normal | reflectedRay.direction;
+    Color reflected = isotropicBRDF(hit.material, _ray, reflectedRay, hit.normal) * trace(reflectedRay, _recursions + 1) / cos_theta * M_PI;
     return (emitted + reflected);
 }
 

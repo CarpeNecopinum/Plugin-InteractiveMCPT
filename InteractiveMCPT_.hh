@@ -6,6 +6,7 @@
 #include <OpenFlipper/BasePlugin/ToolboxInterface.hh>
 #include <OpenFlipper/BasePlugin/ProcessInterface.hh>
 #include <OpenFlipper/common/Types.hh>
+#include <QRunnable>
 
 #include <QTimer>
 
@@ -18,6 +19,11 @@ struct Ray
 {
   Vec3d origin;
   Vec3d direction;
+};
+
+struct Point
+{
+    int x, y;
 };
 
 struct Face
@@ -81,7 +87,6 @@ private slots:
     void initializePlugin(); // BaseInterface
 
     void openWindow();
-    void launchThread();
     void threadFinished();
     void canceledJob(QString /*_jobId*/ );
     void updateImageWidget();
@@ -91,7 +96,7 @@ private slots:
     void raytrace();
     void globalRender();
 
-    void changeRaysPerPixel(int rays) { raysPerPixel = rays; }
+    void changeRaysPerPixel(int rays) { settings.samplesPerPixel = rays; }
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -168,12 +173,25 @@ protected:
           Vec3d image_plane_start;
           Vec3d eye_point;
       };
+      CameraInfo mCam;
+
+      struct RenderSettings
+      {
+          int samplesPerPixel;
+      };
+
+      struct RenderJob
+      {
+          RenderSettings settings;
+          std::vector<Point> pixels;
+      };
 
       CameraInfo computeCameraInfo() const;
       Vec3d* mAccumulatedColor;
       uint32_t* mSamples;
       std::vector<Vec3d> randomDirectionsCosTheta(int number, Vec3d n);
       Vec3d clampToAxis(const Vec3d& n);
+      RenderSettings settings;
 
 
       struct Intersection
@@ -185,6 +203,9 @@ protected:
       };
       Intersection intersectScene(const Ray &_ray);
       Color isotropicBRDF(const Material &objectMaterial, const Ray &incommingRay, const Ray &outgoingRay, const Vec3d &intersectionNormal);
+      void runJob(RenderJob job);
+      std::vector<QFuture<void> > mRunningFutures;
+
 private:
      QTimer updateTimer_;
 
@@ -192,8 +213,6 @@ private:
      QImage image_;
      QLabel* imageLabel_;
      QWidget* imageWindow;
-
-     int raysPerPixel;
 
      // Light sources in the scene
      std::vector< LightSource > lights_;
@@ -203,7 +222,7 @@ private:
 
      void clearImage();
 
-     void tracePixel(size_t x, size_t y, const CameraInfo &cam);
+     void tracePixel(size_t x, size_t y);
 };
 
 #endif //INTERACTIVEMCPT_HH
