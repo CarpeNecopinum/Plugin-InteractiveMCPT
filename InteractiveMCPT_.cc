@@ -4,8 +4,10 @@
 #include <OpenFlipper/BasePlugin/PluginFunctionsViewControls.hh>
 #include <ObjectTypes/Sphere/Sphere.hh>
 #include <ACG/Utils/VSToolsT.hh>
+#include <QtConcurrent>
 
 #include <QTime>
+#include "Sampling.hh"
 
 #define EPS (1e-6)
 
@@ -196,11 +198,11 @@ void InteractiveMCPTPlugin::updateImageWidget() {
 
     std::cout << "Ping" << std::endl;
     // Generate Image from accumulated buffer and sample counter
-    for (size_t y = 0; y < image_.height(); ++y)
+    for (int y = 0; y < image_.height(); ++y)
     {
-        for (size_t x = 0; x < image_.width(); ++x)
+        for (int x = 0; x < image_.width(); ++x)
         {
-            size_t index = x + image_.width() * y;
+            int index = x + image_.width() * y;
             Vec3d color = mAccumulatedColor[index];
             color /= mSamples[index];
 
@@ -248,49 +250,6 @@ InteractiveMCPTPlugin::Intersection InteractiveMCPTPlugin::intersectScene(const 
     return result;
 }
 
-
-// Return vector of 'number' normalized directions with cos-theta weighted distribution on the unit hemisphere oriented according to normal 'n'
-std::vector<Vec3d> InteractiveMCPTPlugin::randomDirectionsCosTheta(int number, Vec3d n) {
-    std::vector<Vec3d> dirs(number, Vec3d(1.0, 0.0, 0.0));
-    // Hint: Generate random number between -1 and 1 by "(((double)rand()) / ((double)RAND_MAX) - 0.5) * 2.0"
-    // Note: Insert a generated direction "d" into vector dirs by "dirs[s] = d"
-    Vec3d  x_dir, y_dir, dir;
-
-    n.normalize();
-    // local coord system
-    y_dir = clampToAxis(n);
-
-    x_dir = n % y_dir;
-    y_dir = x_dir % n;
-    x_dir.normalize();
-    y_dir.normalize();
-    /// --- start strip --- ///
-    int counter = 0;
-    while(counter < number){
-        double x = (((double)rand()) / ((double)RAND_MAX) - 0.5) * 2.0;
-        double y = (((double)rand()) / ((double)RAND_MAX) - 0.5) * 2.0;
-        double r2 = x * x + y * y;
-        if(r2 < 1.0){
-            dirs[counter] = x * x_dir + y * y_dir + sqrt(1 - r2) * n;
-            counter++;
-        }
-    }
-    /// --- end strip --- ///
-    return dirs;
-}
-
-Vec3d InteractiveMCPTPlugin::clampToAxis(const Vec3d &n) {
-    Vec3d res;
-    if(std::fabs(n[0]) > std::fabs(n[1]) && std::fabs(n[0]) > std::fabs(n[2])) {
-        res = Vec3d(0,0,1);
-    } else if(std::fabs(n[1]) > std::fabs(n[0]) && std::fabs(n[1]) > std::fabs(n[2])) {
-        res = Vec3d(1,0,0);
-    } else { //(std::fabs(n[2]) > std::fabs(n[0]) && std::fabs(n[2]) > std::fabs(n[1])) {
-        res = Vec3d(0,1,0);
-    }
-    return res;
-}
-
 Color InteractiveMCPTPlugin::isotropicBRDF(const Material& objectMaterial, const Ray& incommingRay, const Ray& outgoingRay, const Vec3d& intersectionNormal) {
   Ray reflectedRay(reflect(incommingRay, Vec3d(0, 0, 0), intersectionNormal));
     double cos_theta = intersectionNormal | outgoingRay.direction;
@@ -327,7 +286,7 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
 
     //Ray mirroredRay = reflect(_ray, hit.position, hit.normal);
 
-    Ray reflectedRay = {hit.position, randomDirectionsCosTheta(1, hit.normal).front()};
+    Ray reflectedRay = {hit.position, Sampling::randomDirectionsCosTheta(1, hit.normal).front()};
     double cos_theta = hit.normal | reflectedRay.direction;
     Color reflected = isotropicBRDF(hit.material, _ray, reflectedRay, hit.normal) * trace(reflectedRay, _recursions + 1) / cos_theta * M_PI;
     return (emitted + reflected);
@@ -563,8 +522,8 @@ void InteractiveMCPTPlugin::clearImage()
     if (mAccumulatedColor) delete[] mAccumulatedColor;
     Vec3d zeroVec(0.,0.,0.);
     mAccumulatedColor = new Vec3d[imageWidth * imageHeight];
-    for (size_t y = 0; y < imageHeight; ++y)
-        for (size_t x = 0; x < imageWidth; ++x)
+    for (int y = 0; y < imageHeight; ++y)
+        for (int x = 0; x < imageWidth; ++x)
             mAccumulatedColor[x + y * imageWidth] = zeroVec;
 
     if (mSamples) delete[] mSamples;

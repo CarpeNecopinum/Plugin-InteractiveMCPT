@@ -189,8 +189,7 @@ protected:
       CameraInfo computeCameraInfo() const;
       Vec3d* mAccumulatedColor;
       uint32_t* mSamples;
-      std::vector<Vec3d> randomDirectionsCosTheta(int number, Vec3d n);
-      Vec3d clampToAxis(const Vec3d& n);
+
       RenderSettings settings;
 
 
@@ -205,6 +204,7 @@ protected:
       Color isotropicBRDF(const Material &objectMaterial, const Ray &incommingRay, const Ray &outgoingRay, const Vec3d &intersectionNormal);
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
+
 
 private:
      QTimer updateTimer_;
