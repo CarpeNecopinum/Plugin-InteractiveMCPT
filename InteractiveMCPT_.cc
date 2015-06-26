@@ -4,7 +4,10 @@
 #include <OpenFlipper/BasePlugin/PluginFunctionsViewControls.hh>
 #include <ObjectTypes/Sphere/Sphere.hh>
 #include <ACG/Utils/VSToolsT.hh>
+
+#if QT_VERSION >= 0x050000
 #include <QtConcurrent>
+#endif
 
 #include <QTime>
 #include "Sampling.hh"
@@ -277,6 +280,7 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
         return black;
 
     Intersection hit = intersectScene(_ray);
+    Ray mirrored = reflect(_ray, hit.position, hit.normal);
 
     if (hit.depth == FLT_MAX) return black;
     if( (hit.normal | (-_ray.direction)) < 0.0 ) return black;
@@ -284,11 +288,25 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     // Reflectance used for emittance
     Color emitted = float(hit.material.reflectance()) * Color(1.0f, 1.0f, 1.0f, 0.0f);
 
-    //Ray mirroredRay = reflect(_ray, hit.position, hit.normal);
+    // Russian Roulette, wether to use diffuse or glossy samples
+    double diffuseReflectance = Sampling::brightness(hit.material.diffuseColor());
+    double specularReflectance = Sampling::brightness(hit.material.specularColor());
+    double totalReflectance = diffuseReflectance + specularReflectance;
 
-    Ray reflectedRay = {hit.position, Sampling::randomDirectionsCosTheta(1, hit.normal).front()};
-    double cos_theta = hit.normal | reflectedRay.direction;
-    Color reflected = isotropicBRDF(hit.material, _ray, reflectedRay, hit.normal) * trace(reflectedRay, _recursions + 1) / cos_theta * M_PI;
+    Sampling::DirectionSample sample;
+    if ((Sampling::random() * totalReflectance) <= diffuseReflectance)
+    {
+        sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front();
+    } else {
+        double exponent = hit.material.shininess();
+        sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, exponent).front();
+    }
+
+    Ray reflectedRay;
+    reflectedRay.origin = hit.position;
+    reflectedRay.direction = sample.direction;
+
+    Color reflected = isotropicBRDF(hit.material, _ray, reflectedRay, hit.normal) * trace(reflectedRay, _recursions + 1) / sample.weight;
     return (emitted + reflected);
 }
 

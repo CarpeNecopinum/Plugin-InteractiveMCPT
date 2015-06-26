@@ -2,53 +2,58 @@
 
 using namespace ACG;
 
-std::vector<Vec3d> Sampling::randomDirectionCosPowerTheta(int number, Vec3d n, double exponent)
+namespace Sampling
 {
-    std::vector<Vec3d> dirs(number, Vec3d(1.0, 0.0, 0.0));
+
+std::vector<DirectionSample> randomDirectionCosPowerTheta(int number, Vec3d n, double exponent)
+{
+    std::vector<DirectionSample> dirs;
     Vec3d  x_dir, y_dir;
     generateTangentSystem(n, x_dir, y_dir);
 
-    int counter = 0;
-    while(counter < number){
+    while (number--) {
         double xi1 = random();
-        double theta = std::acos(std::pow(xi1, 1.0 / (exponent + 1.0)));
+        double costheta = std::pow(xi1, 1.0 / (exponent + 1.0));
+        double theta = std::acos(costheta);
         double xi2 = random();
         double phi = 2.0 * M_PI * xi2;
 
-        dirs.push_back(
-                    x_dir * std::cos(phi) * std::sin(theta) +
-                    y_dir * std::sin(phi) * std::cos(theta) +
-                    n     * std::cos(theta)
-                );
-        counter++;
+        Vec3d direction =
+                x_dir * std::cos(phi) * std::sin(theta) +
+                y_dir * std::sin(phi) * std::cos(theta) +
+                n     * std::cos(theta);
+
+        double weight = (exponent + 1.0) * std::pow(costheta, exponent) * std::sin(theta) / (2.0 * M_PI);
+
+        dirs.push_back({direction, weight});
     }
     return dirs;
 }
 
 
-std::vector<Vec3d> Sampling::randomDirectionsCosTheta(int number, Vec3d n) {
-    std::vector<Vec3d> dirs(number, Vec3d(1.0, 0.0, 0.0));
-    // Hint: Generate random number between -1 and 1 by "(((double)rand()) / ((double)RAND_MAX) - 0.5) * 2.0"
-    // Note: Insert a generated direction "d" into vector dirs by "dirs[s] = d"
+std::vector<DirectionSample> randomDirectionsCosTheta(int number, Vec3d n) {
+    std::vector<DirectionSample> dirs;
     Vec3d  x_dir, y_dir;
     generateTangentSystem(n, x_dir, y_dir);
-    /// --- start strip --- ///
-    int counter = 0;
-    while(counter < number){
-        double x = randomSymmetric();
-        double y = randomSymmetric();
-        double r2 = x * x + y * y;
-        if(r2 < 1.0){
-            dirs[counter] = x * x_dir + y * y_dir + sqrt(1 - r2) * n;
-            counter++;
-        }
+
+    while(number--){
+        double xi1 = random();
+        double costheta = std::sqrt(xi1);
+        double theta = std::acos(costheta);
+        double phi = 2.0 * M_PI * random();
+        Vec3d direction =
+                x_dir * std::cos(phi) * std::sin(theta) +
+                y_dir * std::sin(phi) * std::cos(theta) +
+                n     * std::cos(theta);
+        double weight = costheta * std::sin(theta) / M_PI;
+
+        dirs.push_back({direction, weight});
     }
-    /// --- end strip --- ///
     return dirs;
 }
 
 
-void Sampling::generateTangentSystem(Vec3d &n, Vec3d &x, Vec3d &y)
+void generateTangentSystem(Vec3d &n, Vec3d &x, Vec3d &y)
 {
     n.normalize();
     y = clampToAxis(n);
@@ -59,7 +64,7 @@ void Sampling::generateTangentSystem(Vec3d &n, Vec3d &x, Vec3d &y)
 }
 
 
-Vec3d Sampling::clampToAxis(const Vec3d &n) {
+Vec3d clampToAxis(const Vec3d &n) {
     Vec3d res;
     if(std::fabs(n[0]) > std::fabs(n[1]) && std::fabs(n[0]) > std::fabs(n[2])) {
         res = Vec3d(0,0,1);
@@ -69,4 +74,12 @@ Vec3d Sampling::clampToAxis(const Vec3d &n) {
         res = Vec3d(0,1,0);
     }
     return res;
+}
+
+
+double brightness(Vec4f color) {
+    // Convert to Y (Yuv Color space)
+    return (0.299f * color[0] + 0.587f * color[1] + 0.114f * color[2]) * color[3];
+}
+
 }
