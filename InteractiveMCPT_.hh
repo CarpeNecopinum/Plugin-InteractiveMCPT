@@ -201,7 +201,6 @@ protected:
           Material material;
       };
       Intersection intersectScene(const Ray &_ray);
-      Color isotropicBRDF(const Material &objectMaterial, const Ray &incommingRay, const Ray &outgoingRay, const Vec3d &intersectionNormal);
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
 

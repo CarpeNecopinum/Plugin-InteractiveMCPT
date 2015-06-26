@@ -11,6 +11,7 @@
 
 #include <QTime>
 #include "Sampling.hh"
+#include "BRDF.hh"
 
 #define EPS (1e-6)
 
@@ -253,24 +254,6 @@ InteractiveMCPTPlugin::Intersection InteractiveMCPTPlugin::intersectScene(const 
     return result;
 }
 
-Color InteractiveMCPTPlugin::isotropicBRDF(const Material& objectMaterial, const Ray& incommingRay, const Ray& outgoingRay, const Vec3d& intersectionNormal) {
-  Ray reflectedRay(reflect(incommingRay, Vec3d(0, 0, 0), intersectionNormal));
-    double cos_theta = intersectionNormal | outgoingRay.direction;
-    if(cos_theta < 0) {
-        cos_theta = 0.0;
-    }
-    double shin = objectMaterial.shininess();
-    shin = std::min(shin, 1000.0);
-    shin = std::max(shin, 1.0);
-    double dot2 = reflectedRay.direction | outgoingRay.direction;
-    double specTerm = 0.0;
-    if(dot2 > 0.0) {
-        specTerm = pow(dot2, shin);
-    }
-    return (
-            (float)cos_theta * objectMaterial.diffuseColor() / M_PI
-            + ((float) ((shin + 1.0) / (2.0 * M_PI) * specTerm) * objectMaterial.specularColor()) );
-}
 
 Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     unsigned int max_depth = 3;
@@ -294,19 +277,21 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     double totalReflectance = diffuseReflectance + specularReflectance;
 
     Sampling::DirectionSample sample;
-    if ((Sampling::random() * totalReflectance) <= diffuseReflectance)
-    {
-        sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front();
-    } else {
-        double exponent = hit.material.shininess();
-        sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, exponent).front();
-    }
+    //if ((Sampling::random() * totalReflectance) <= diffuseReflectance)
+    //{
+        sample = Sampling::randomDirectionsCosThetaOld(1, hit.normal).front();
+    //} else {
+    //   double exponent = hit.material.shininess();
+    //    sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, exponent).front();
+    //}
 
     Ray reflectedRay;
     reflectedRay.origin = hit.position;
     reflectedRay.direction = sample.direction;
+    double costheta = sample.direction | hit.normal;
 
-    Color reflected = isotropicBRDF(hit.material, _ray, reflectedRay, hit.normal) * trace(reflectedRay, _recursions + 1) / sample.weight;
+    Color reflected = BRDF::phongBRDF(hit.material, _ray.direction, reflectedRay.direction, hit.normal)
+                      * trace(reflectedRay, _recursions + 1) / costheta / sample.density;
     return (emitted + reflected);
 }
 

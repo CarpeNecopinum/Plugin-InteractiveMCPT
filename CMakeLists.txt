@@ -1,5 +1,5 @@
 include (plugin)
 
-find_package(CXX11)
+find_package(CXX11 REQUIRED)
 
-openflipper_plugin (CFLAGS_ADD "${CXX11_FLAGS} -ffast-math")
+openflipper_plugin (CFLAGSADD "${CXX11_FLAGS} -ffast-math")

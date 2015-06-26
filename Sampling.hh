@@ -9,11 +9,13 @@ namespace Sampling {
     struct DirectionSample
     {
         ACG::Vec3d direction;
-        double weight;
+        double density;
     };
 
     std::vector<DirectionSample> randomDirectionsCosTheta(int number, ACG::Vec3d n);
     std::vector<DirectionSample> randomDirectionCosPowerTheta(int number, ACG::Vec3d n, double exponent);
+    std::vector<DirectionSample> randomDirectionsCosThetaOld(unsigned int number, ACG::Vec3d n);
+    void testWeight();
 
     void generateTangentSystem(ACG::Vec3d &n, ACG::Vec3d &x, ACG::Vec3d &y);
 
