@@ -18,7 +18,7 @@
 
 
 void InteractiveMCPTPlugin::initializePlugin()
-{    
+{
     mAccumulatedColor = 0;
     mSamples = 0;
     settings.samplesPerPixel = 1;
@@ -256,6 +256,7 @@ InteractiveMCPTPlugin::Intersection InteractiveMCPTPlugin::intersectScene(const 
 
 
 Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
+
     unsigned int max_depth = 3;
     Color black(0.0f,0.0f,0.0f,1.0f);
 
@@ -277,21 +278,23 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     double totalReflectance = diffuseReflectance + specularReflectance;
 
     Sampling::DirectionSample sample;
-    //if ((Sampling::random() * totalReflectance) <= diffuseReflectance)
-    //{
-        sample = Sampling::randomDirectionsCosThetaOld(1, hit.normal).front();
-    //} else {
-    //   double exponent = hit.material.shininess();
-    //    sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, exponent).front();
-    //}
+    if ((Sampling::random() * totalReflectance) <= diffuseReflectance)
+    {
+        sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front();
+    }
+    else
+    {
+        sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, hit.material.shininess()).front();
+    }
 
     Ray reflectedRay;
     reflectedRay.origin = hit.position;
     reflectedRay.direction = sample.direction;
     double costheta = sample.direction | hit.normal;
 
-    Color reflected = BRDF::phongBRDF(hit.material, _ray.direction, reflectedRay.direction, hit.normal)
-                      * trace(reflectedRay, _recursions + 1) / costheta / sample.density;
+    //Color reflected = BRDF::phongBRDF(hit.material, _ray.direction, reflectedRay.direction, hit.normal)
+    Color reflected = BRDF::diffuse(hit.material)
+                      * trace(reflectedRay, _recursions + 1) * costheta / sample.density;
     return (emitted + reflected);
 }
 

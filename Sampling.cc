@@ -20,10 +20,10 @@ std::vector<DirectionSample> randomDirectionCosPowerTheta(int number, Vec3d n, d
 
         Vec3d direction =
                 x_dir * std::cos(phi) * std::sin(theta) +
-                y_dir * std::sin(phi) * std::cos(theta) +
+                y_dir * std::sin(phi) * std::sin(theta) +
                 n     * std::cos(theta);
 
-        double weight = (exponent + 1.0) * std::pow(costheta, exponent) * std::sin(theta) / (2.0 * M_PI);
+        double weight = (exponent + 1.0) * std::pow(costheta, exponent) * std::sin(theta);
 
         dirs.push_back({direction, weight});
     }
@@ -32,7 +32,8 @@ std::vector<DirectionSample> randomDirectionCosPowerTheta(int number, Vec3d n, d
 
 
 std::vector<DirectionSample> randomDirectionsCosTheta(int number, Vec3d n) {
-    std::vector<DirectionSample> dirs;
+    return randomDirectionCosPowerTheta(number, n, 1.0);
+    /*std::vector<DirectionSample> dirs;
     Vec3d  x_dir, y_dir;
     generateTangentSystem(n, x_dir, y_dir);
 
@@ -45,16 +46,16 @@ std::vector<DirectionSample> randomDirectionsCosTheta(int number, Vec3d n) {
                 x_dir * std::cos(phi) * std::sin(theta) +
                 y_dir * std::sin(phi) * std::cos(theta) +
                 n     * std::cos(theta);
-        double weight = costheta * std::sin(theta) / M_PI;
+        double weight = costheta * std::sin(theta) * M_PI;
 
         dirs.push_back({direction, weight});
     }
-    return dirs;
+    return dirs;*/
 }
 
 void testWeight()
 {
-    auto samples = randomDirectionsCosThetaOld(100000, Vec3d(0.0, 0.0, 1.0));
+    auto samples = randomDirectionCosPowerTheta(100000, Vec3d(0.0, 0.0, 1.0), 2.0);
     double weightsum = 0.0;
     for (auto sample : samples)
     {
