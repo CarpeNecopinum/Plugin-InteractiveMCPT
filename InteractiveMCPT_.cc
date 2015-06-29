@@ -12,15 +12,21 @@
 #include <QTime>
 #include "Sampling.hh"
 #include "BRDF.hh"
+#include <QMouseEvent>
+#include "ImageViewer.hh"
 
 #define EPS (1e-6)
 
 
+void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
+    std::cout << ev->pos().x() << " " << ev->pos().y() << std::endl;
+}
 
 void InteractiveMCPTPlugin::initializePlugin()
 {
     mAccumulatedColor = 0;
     mSamples = 0;
+    mQueuedSamples = 0;
     settings.samplesPerPixel = 1;
 
 	// Create the toolbox
@@ -42,12 +48,13 @@ void InteractiveMCPTPlugin::initializePlugin()
     imageWindow->setLayout(layout);
     imageWindow->resize(800, 600);
 
-	imageLabel_ = new QLabel();
+    imageLabel_ = new ImageViewer(imageWindow);
 	imageLabel_->setBackgroundRole(QPalette::Base);
 	imageLabel_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
 	imageLabel_->setScaledContents(false);
 	imageLabel_->setContextMenuPolicy(Qt::CustomContextMenu);
 	connect(imageLabel_,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(showContextMenu(QPoint)));
+    connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(testMousePressed(QMouseEvent*)));
     layout->addWidget(imageLabel_);
 
     QVBoxLayout* sidebox = new QVBoxLayout(imageWindow);
@@ -67,6 +74,7 @@ void InteractiveMCPTPlugin::initializePlugin()
     seRaysPerPixel->setMinimum(1);
     connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
     sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
+
 
     connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
     updateTimer_.setInterval(1000);
@@ -110,7 +118,11 @@ void InteractiveMCPTPlugin::runJob(RenderJob job)
 
         for (int i = 0; i < job.settings.samplesPerPixel; i++)
             tracePixel(point.x, point.y);
+
+        size_t index = point.y * image_.width() + point.x;
+        mQueuedSamples[index]--;
     }
+
 }
 
 void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y)
@@ -150,6 +162,17 @@ InteractiveMCPTPlugin::CameraInfo InteractiveMCPTPlugin::computeCameraInfo() con
     return cam;
 }
 
+void InteractiveMCPTPlugin::queueJob(RenderJob job)
+{
+    for (Point point : job.pixels)
+    {
+        size_t index = point.y * image_.width() + point.x;
+        mQueuedSamples[index]++;
+    }
+    mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
+}
+
+
 void InteractiveMCPTPlugin::globalRender()
 {
     RenderJob job;
@@ -167,7 +190,7 @@ void InteractiveMCPTPlugin::globalRender()
             }
 
             if (job.pixels.size() >= 64) {
-                mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
+                queueJob(job);
                 job.pixels.clear();
             }
 
@@ -176,7 +199,7 @@ void InteractiveMCPTPlugin::globalRender()
         }
     }
     if (!job.pixels.empty())
-        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
+        queueJob(job);
 
     updateTimer_.start();
 }
@@ -200,7 +223,8 @@ void InteractiveMCPTPlugin::threadFinished() {
 
 void InteractiveMCPTPlugin::updateImageWidget() {
 
-    std::cout << "Ping" << std::endl;
+    const Vec3d markerColors[] = { {0.0, 1.0, 0.0}, {1.0, 1.0, 0.0}, {1.0, 0.0, 0.0} };
+
     // Generate Image from accumulated buffer and sample counter
     for (int y = 0; y < image_.height(); ++y)
     {
@@ -212,6 +236,12 @@ void InteractiveMCPTPlugin::updateImageWidget() {
 
             color.maximize(Vec3d(0.0, 0.0, 0.0));
             color.minimize(Vec3d(1.0, 1.0, 1.0));
+
+            uint8_t left = mQueuedSamples[index];
+            if (left > 0 && left <= sizeof(markerColors))
+            {
+                color = 0.5 * color + 0.5 * markerColors[left - 1];
+            }
 
             image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());
         }
@@ -534,6 +564,10 @@ void InteractiveMCPTPlugin::clearImage()
     if (mSamples) delete[] mSamples;
     mSamples = new uint32_t[imageWidth * imageHeight];
     memset(mSamples, 0, imageWidth * imageHeight * sizeof(uint32_t));
+
+    if (mQueuedSamples) delete[] mQueuedSamples;
+    mQueuedSamples = new uint8_t[imageWidth * imageHeight];
+    memset(mQueuedSamples, 0, imageWidth * imageHeight * sizeof(uint8_t));
 
     image_ = QImage(imageWidth,imageHeight,QImage::Format_RGB32);
     image_.fill(Qt::black);

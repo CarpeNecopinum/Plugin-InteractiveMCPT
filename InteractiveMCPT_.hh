@@ -13,6 +13,8 @@
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
 #include <ObjectTypes/Light/Light.hh>
 
+class ImageViewer;
+
 typedef ACG::Vec3d Vec3d;
 
 struct Ray
@@ -165,6 +167,7 @@ private slots:
 
    public slots:
       QString version() { return QString("1.0"); }
+      void testMousePressed(QMouseEvent* ev);
 
 protected:
       struct CameraInfo
@@ -189,6 +192,7 @@ protected:
       CameraInfo computeCameraInfo() const;
       Vec3d* mAccumulatedColor;
       uint32_t* mSamples;
+      uint8_t* mQueuedSamples;
 
       RenderSettings settings;
 
@@ -205,13 +209,16 @@ protected:
       std::vector<QFuture<void> > mRunningFutures;
 
 
+      void queueJob(RenderJob job);
 private:
+
      QTimer updateTimer_;
 
      // The rendered image
      QImage image_;
-     QLabel* imageLabel_;
+     ImageViewer* imageLabel_;
      QWidget* imageWindow;
+
 
      // Light sources in the scene
      std::vector< LightSource > lights_;
