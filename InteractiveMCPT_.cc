@@ -307,23 +307,20 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     double specularReflectance = Sampling::brightness(hit.material.specularColor());
     double totalReflectance = diffuseReflectance + specularReflectance;
 
-    Sampling::DirectionSample sample;
-    if ((Sampling::random() * totalReflectance) <= diffuseReflectance)
-    {
-        sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front();
-    }
-    else
-    {
-        sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, hit.material.shininess()).front();
-    }
+    ACG:Vec3d sample;
+    ((Sampling::random() * totalReflectance) <= diffuseReflectance)
+        ? sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front()
+        : sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, hit.material.shininess()).front();
+    double density = (diffuseReflectance / totalReflectance) * Sampling::densityCosTheta(hit.normal, sample)
+                  + (specularReflectance / totalReflectance) * Sampling::densityCosPowerTheta(mirrored.direction, hit.material.shininess(), sample);
 
     Ray reflectedRay;
     reflectedRay.origin = hit.position;
-    reflectedRay.direction = sample.direction;
-    double costheta = sample.direction | hit.normal;
+    reflectedRay.direction = sample;
+    double costheta = sample | hit.normal;
 
     Color reflected = BRDF::phongBRDF(hit.material, _ray.direction, reflectedRay.direction, hit.normal)
-                      * trace(reflectedRay, _recursions + 1) * costheta / sample.density;
+                      * trace(reflectedRay, _recursions + 1) * costheta / density;
     return (emitted + reflected);
 }
 
