@@ -5,9 +5,10 @@ using namespace ACG;
 namespace Sampling
 {
 
-std::vector<DirectionSample> randomDirectionCosPowerTheta(int number, Vec3d n, double exponent)
+
+std::vector<Vec3d> randomDirectionCosPowerTheta(int number, Vec3d n, double exponent)
 {
-    std::vector<DirectionSample> dirs;
+    std::vector<Vec3d> dirs;
     Vec3d  x_dir, y_dir;
     generateTangentSystem(n, x_dir, y_dir);
 
@@ -22,16 +23,13 @@ std::vector<DirectionSample> randomDirectionCosPowerTheta(int number, Vec3d n, d
                 x_dir * std::cos(phi) * std::sin(theta) +
                 y_dir * std::sin(phi) * std::sin(theta) +
                 n     * std::cos(theta);
-
-        double weight = (exponent + 1.0) * std::pow(costheta, exponent) * std::sin(theta);
-
-        dirs.push_back({direction, weight});
+        dirs.push_back(direction);
     }
     return dirs;
 }
 
 
-std::vector<DirectionSample> randomDirectionsCosTheta(int number, Vec3d n) {
+std::vector<Vec3d> randomDirectionsCosTheta(int number, Vec3d n) {
     return randomDirectionCosPowerTheta(number, n, 1.0);
     /*std::vector<DirectionSample> dirs;
     Vec3d  x_dir, y_dir;
@@ -55,6 +53,7 @@ std::vector<DirectionSample> randomDirectionsCosTheta(int number, Vec3d n) {
 
 void testWeight()
 {
+    /*
     auto samples = randomDirectionCosPowerTheta(100000, Vec3d(0.0, 0.0, 1.0), 2.0);
     double weightsum = 0.0;
     for (auto sample : samples)
@@ -62,13 +61,14 @@ void testWeight()
         weightsum += 1.0 / sample.density;
     }
     std::cout << weightsum / double(samples.size()) << std::endl;
+    */
 }
 
-std::vector<DirectionSample> randomDirectionsCosThetaOld(unsigned int number, Vec3d n) {
-    std::vector<DirectionSample> dirs;
+std::vector<Vec3d> randomDirectionsCosThetaOld(unsigned int number, Vec3d n) {
+    std::vector<Vec3d> dirs;
 
     Vec3d  x_dir, y_dir, dir;
-    DirectionSample sample;
+    Vec3d sample;
 
     n.normalize();
     // local coord system
@@ -94,8 +94,7 @@ std::vector<DirectionSample> randomDirectionsCosThetaOld(unsigned int number, Ve
             dir.normalize();
             if((double)(dir|n) >= 0.0) break;
         }
-        sample.direction = dir;
-        sample.density = (dir | n) * 2.0;
+        sample = dir;
 
         dirs.push_back(sample);
     }
@@ -129,6 +128,22 @@ Vec3d clampToAxis(const Vec3d &n) {
 double brightness(Vec4f color) {
     // Convert to Y (Yuv Color space)
     return (0.299f * color[0] + 0.587f * color[1] + 0.114f * color[2]) * color[3];
+}
+
+double densityCosPowerTheta(Vec3d z, double exponent, Vec3d direction)
+{
+    double costheta = z | direction;
+    double theta = std::acos(costheta);
+    return (exponent + 1.0) * std::pow(costheta, exponent) * std::sin(theta);
+}
+
+double densityCosTheta(Vec3d z, Vec3d direction)
+{
+    return densityCosPowerTheta(z, 1.0, direction);
+    /*
+    double costheta = z | direction;
+    double theta = std::acos(costheta);
+    return costheta * std::sin(theta);*/
 }
 
 }

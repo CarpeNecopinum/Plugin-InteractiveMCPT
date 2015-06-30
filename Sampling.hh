@@ -6,15 +6,12 @@
 namespace Sampling {
     ACG::Vec3d clampToAxis(const ACG::Vec3d& n);
 
-    struct DirectionSample
-    {
-        ACG::Vec3d direction;
-        double density;
-    };
+    double densityCosPowerTheta(ACG::Vec3d z, double exponent, ACG::Vec3d direction);
+    double densityCosTheta(ACG::Vec3d z, ACG::Vec3d direction);
 
-    std::vector<DirectionSample> randomDirectionsCosTheta(int number, ACG::Vec3d n);
-    std::vector<DirectionSample> randomDirectionCosPowerTheta(int number, ACG::Vec3d n, double exponent);
-    std::vector<DirectionSample> randomDirectionsCosThetaOld(unsigned int number, ACG::Vec3d n);
+    std::vector<ACG::Vec3d> randomDirectionsCosTheta(int number, ACG::Vec3d n);
+    std::vector<ACG::Vec3d> randomDirectionCosPowerTheta(int number, ACG::Vec3d n, double exponent);
+    std::vector<ACG::Vec3d> randomDirectionsCosThetaOld(unsigned int number, ACG::Vec3d n);
     void testWeight();
 
     void generateTangentSystem(ACG::Vec3d &n, ACG::Vec3d &x, ACG::Vec3d &y);
