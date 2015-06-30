@@ -327,7 +327,7 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     double specularReflectance = Sampling::brightness(hit.material.specularColor());
     double totalReflectance = diffuseReflectance + specularReflectance;
 
-    ACG:Vec3d sample;
+    Vec3d sample;
     ((Sampling::random() * totalReflectance) <= diffuseReflectance)
         ? sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front()
         : sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, hit.material.shininess()).front();
