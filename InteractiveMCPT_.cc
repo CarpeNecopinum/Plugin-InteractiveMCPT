@@ -14,6 +14,8 @@
 #include "BRDF.hh"
 #include <QMouseEvent>
 #include "ImageViewer.hh"
+#include "MonteCuda.hh"
+#include "InfoStructs.hh"
 
 #define EPS (1e-6)
 
@@ -117,6 +119,9 @@ void InteractiveMCPTPlugin::saveImage() {
 }
 
 void InteractiveMCPTPlugin::openWindow() {
+    PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH ));
+    uploadGeometry(o_It, PluginFunctions::objectsEnd());
+
     cancel_ = false;
 
     clearImage();
@@ -124,6 +129,7 @@ void InteractiveMCPTPlugin::openWindow() {
     imageLabel_->resize(PluginFunctions::viewerProperties().glState().viewport_width(),PluginFunctions::viewerProperties().glState().viewport_height());
     updateImageWidget();
     mCam = computeCameraInfo();
+    uploadCameraInfo(mCam);
     imageWindow->show();
 
 }
@@ -166,7 +172,7 @@ void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y)
     mSamples[index]++;
 }
 
-InteractiveMCPTPlugin::CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
+CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
 {
     double fovy = PluginFunctions::viewerProperties().glState().fovy();
     Vec3d viewingDirection = PluginFunctions::viewingDirection();
@@ -322,7 +328,7 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     // Reflectance used for emittance
     Color emitted = float(hit.material.reflectance()) * Color(1.0f, 1.0f, 1.0f, 0.0f);
 
-    // Russian Roulette, wether to use diffuse or glossy samples
+    // Russian Roulette, whether to use diffuse or glossy samples
     double diffuseReflectance = Sampling::brightness(hit.material.diffuseColor());
     double specularReflectance = Sampling::brightness(hit.material.specularColor());
     double totalReflectance = diffuseReflectance + specularReflectance;

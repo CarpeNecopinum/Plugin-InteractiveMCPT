@@ -14,20 +14,12 @@
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
 #include <ObjectTypes/Light/Light.hh>
 
+#include "InfoStructs.hh"
+
 class ImageViewer;
 
 typedef ACG::Vec3d Vec3d;
 
-struct Ray
-{
-  Vec3d origin;
-  Vec3d direction;
-};
-
-struct Point
-{
-    int x, y;
-};
 
 struct Face
 {
@@ -174,12 +166,6 @@ private slots:
 	  void testFocusOut(QEvent* ev);
 
 protected:
-      struct CameraInfo
-      {
-          Vec3d x_dir, y_dir;
-          Vec3d image_plane_start;
-          Vec3d eye_point;
-      };
       CameraInfo mCam;
 
       struct RenderSettings
