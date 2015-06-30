@@ -19,7 +19,19 @@
 
 
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
-    std::cout << ev->pos().x() << " " << ev->pos().y() << std::endl;
+	emit log(LOGERR, QString("Mouse Pressed!"));
+}
+
+void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
+	emit log(LOGERR, QString("Mouse Released!"));
+}
+
+void InteractiveMCPTPlugin::testFocusIn(QEvent* ev){
+	emit log(LOGERR, QString("Focus In!"));
+}
+
+void InteractiveMCPTPlugin::testFocusOut(QEvent* ev){
+	emit log(LOGERR, QString("Focus Out!"));
 }
 
 void InteractiveMCPTPlugin::initializePlugin()
@@ -53,9 +65,17 @@ void InteractiveMCPTPlugin::initializePlugin()
 	imageLabel_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
 	imageLabel_->setScaledContents(false);
 	imageLabel_->setContextMenuPolicy(Qt::CustomContextMenu);
+	
 	connect(imageLabel_,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(showContextMenu(QPoint)));
-    connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(testMousePressed(QMouseEvent*)));
-    layout->addWidget(imageLabel_);
+    
+	connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(testMousePressed(QMouseEvent*)));
+	connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(testMouseReleased(QMouseEvent*)));
+    
+	connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
+	connect(imageLabel_, SIGNAL(mouseLeaved(QEvent*)), this, SLOT(testFocusOut(QEvent*)));
+
+	layout->addWidget(imageLabel_);
+
 
     QVBoxLayout* sidebox = new QVBoxLayout(imageWindow);
     layout->addLayout(sidebox);
@@ -68,13 +88,13 @@ void InteractiveMCPTPlugin::initializePlugin()
     QGridLayout * sideboxGrid = new QGridLayout(imageWindow);
     sidebox->addLayout(sideboxGrid);
     sideboxGrid->addWidget(new QLabel("Rays per Pixel", imageWindow), 0, 0);
-
+	
     QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
     seRaysPerPixel->setMaximum(64);
     seRaysPerPixel->setMinimum(1);
     connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
     sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
-
+	sideboxGrid->addWidget(new QPushButton("Test"), 2, 1);
 
     connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
     updateTimer_.setInterval(1000);

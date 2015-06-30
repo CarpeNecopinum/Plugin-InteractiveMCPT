@@ -9,6 +9,7 @@
 #include <QRunnable>
 
 #include <QTimer>
+#include <stdint.h>
 
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
 #include <ObjectTypes/Light/Light.hh>
@@ -95,7 +96,6 @@ private slots:
     void showContextMenu(QPoint _point);
     void saveImage();
 
-    void raytrace();
     void globalRender();
 
     void changeRaysPerPixel(int rays) { settings.samplesPerPixel = rays; }
@@ -168,6 +168,10 @@ private slots:
    public slots:
       QString version() { return QString("1.0"); }
       void testMousePressed(QMouseEvent* ev);
+	  void testMouseReleased(QMouseEvent* ev);
+
+	  void testFocusIn(QEvent* ev);
+	  void testFocusOut(QEvent* ev);
 
 protected:
       struct CameraInfo
