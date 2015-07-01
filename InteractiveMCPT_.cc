@@ -31,7 +31,8 @@ void InteractiveMCPTPlugin::changeBrushSize(int size){
 }
 
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
-	emit log(LOGERR, QString::number(mInteractivDrawing.getBrush().getSize()));
+	emit log(LOGERR, QString("MousePressed"));
+	mInteractivDrawing.testJob(this, ev->x(), ev->y());
 }
 
 void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
@@ -47,8 +48,21 @@ void InteractiveMCPTPlugin::testFocusOut(QEvent* ev){
 }
 
 void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
-	mInteractivDrawing.getBrush().incSize();
 	emit log(LOGERR, QString::number(mInteractivDrawing.getBrush().getSize()));
+}
+
+void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
+	//Brush GUI
+	QPushButton* brushButton = new QPushButton("Brush", parent);
+	layout->addWidget(brushButton, 1, 0);
+	connect(brushButton, SIGNAL(clicked()), this, SLOT(selectBrushBtnPressed));
+
+	QSpinBox * seBrushSize = new QSpinBox(parent);
+	seBrushSize->setMaximum(25);
+	seBrushSize->setMinimum(1);
+	layout->addWidget(seBrushSize, 1, 1);
+	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
+	//
 }
 
 void InteractiveMCPTPlugin::initializePlugin()
@@ -56,7 +70,7 @@ void InteractiveMCPTPlugin::initializePlugin()
     mAccumulatedColor = 0;
     mSamples = 0;
     mQueuedSamples = 0;
-    settings.samplesPerPixel = 1;
+	mSettings.samplesPerPixel = 1;
 
 	// Create the toolbox
 	QWidget* toolbox = new QWidget();
@@ -72,6 +86,8 @@ void InteractiveMCPTPlugin::initializePlugin()
 
     imageWindow = new QWidget(0);
     imageWindow->setWindowTitle("InteractiveMCPT");
+
+	
 
     QHBoxLayout* layout = new QHBoxLayout(imageWindow);
     imageWindow->setLayout(layout);
@@ -106,17 +122,9 @@ void InteractiveMCPTPlugin::initializePlugin()
     connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
     sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
 
-	//Brush GUI
-	QPushButton* brushButton = new QPushButton("Brush", imageWindow);
-	sideboxGrid->addWidget(brushButton, 1, 0);
-	connect(brushButton, SIGNAL(clicked()), this, SLOT(selectBrushBtnPressed));
+	//gui and interactive stuff
+	initializeDrawingGUI(sideboxGrid, imageWindow);
 
-	QSpinBox * seBrushSize = new QSpinBox(imageWindow);
-	seBrushSize->setMaximum(25);
-	seBrushSize->setMinimum(1);
-	sideboxGrid->addWidget(seBrushSize, 1, 1);
-	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
-	//
     connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
     updateTimer_.setInterval(1000);
     updateTimer_.setSingleShot(false);
@@ -210,6 +218,8 @@ CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
 
 void InteractiveMCPTPlugin::queueJob(RenderJob job)
 {
+	emit log(LOGERR, QString::number(job.pixels.size()));
+
     for (Point point : job.pixels)
     {
         size_t index = point.y * image_.width() + point.x;
@@ -222,7 +232,7 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
 void InteractiveMCPTPlugin::globalRender()
 {
     RenderJob job;
-    job.settings = settings;
+	job.settings = mSettings;
 
     const int imageWidth  = image_.width();
     const int imageHeight = image_.height();
@@ -270,6 +280,9 @@ void InteractiveMCPTPlugin::threadFinished() {
 void InteractiveMCPTPlugin::updateImageWidget() {
 
     const Vec3d markerColors[] = { {0.0, 1.0, 0.0}, {1.0, 1.0, 0.0}, {1.0, 0.0, 0.0} };
+
+	// InteractivDrawing Update:
+	mInteractivDrawing.update(this, imageLabel_);
 
     // Generate Image from accumulated buffer and sample counter
     for (int y = 0; y < image_.height(); ++y)

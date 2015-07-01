@@ -79,8 +79,8 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
 private slots:
 
     void initializePlugin(); // BaseInterface
-
-    void openWindow();
+    
+	void openWindow();
     void threadFinished();
     void canceledJob(QString /*_jobId*/ );
     void updateImageWidget();
@@ -90,7 +90,7 @@ private slots:
     void globalRender();
 
 	void selectBrushBtnPressed();
-    void changeRaysPerPixel(int rays) { settings.samplesPerPixel = rays; }
+    void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
@@ -168,27 +168,35 @@ private slots:
 
 	  void testMouseMove(QMouseEvent* ev);
 
+public:
+
+
+	QTimer &getUpdateTimer(){
+		return updateTimer_;
+	}
+
+	struct RenderSettings
+	{
+		int samplesPerPixel;
+	};
+
+	struct RenderJob
+	{
+		RenderSettings settings;
+		std::vector<Point> pixels;
+	};
+
+	void queueJob(RenderJob job);
 
 protected:
       CameraInfo mCam;
-
-      struct RenderSettings
-      {
-          int samplesPerPixel;
-      };
-
-      struct RenderJob
-      {
-          RenderSettings settings;
-          std::vector<Point> pixels;
-      };
 
       CameraInfo computeCameraInfo() const;
       Vec3d* mAccumulatedColor;
       uint32_t* mSamples;
       uint8_t* mQueuedSamples;
 
-      RenderSettings settings;
+      RenderSettings mSettings;
 
 
       struct Intersection
@@ -202,12 +210,9 @@ protected:
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
 
-
-      void queueJob(RenderJob job);
 private:
 
-     QTimer updateTimer_;
-
+	QTimer updateTimer_;
      // The rendered image
      QImage image_;
      ImageViewer* imageLabel_;
@@ -223,6 +228,8 @@ private:
      void clearImage();
 
      void tracePixel(size_t x, size_t y);
+
+	 void initializeDrawingGUI(QGridLayout* layout, QWidget* parent = 0); // Called in initializePlugin.
 };
 
 #endif //INTERACTIVEMCPT_HH

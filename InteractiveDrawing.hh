@@ -1,7 +1,7 @@
 #pragma once
 
-class QGridLayout;
-class QWidget;
+class ImageViewer;
+class InteractiveMCPTPlugin;
 
 class Brush{
 public:
@@ -25,6 +25,10 @@ public:
 	inline Brush& getBrush(){ return _brush; }
 	inline void selectBrush(){ _aktivTools = BRUSH; }
 	inline void deselectTool() { _aktivTools = NONE; }
+
+	void testJob(InteractiveMCPTPlugin* plugin, int posX, int posY);
+
+	void update(InteractiveMCPTPlugin* plugin, ImageViewer* imageViewer);
 
 private:
 	TOOLS _aktivTools = NONE;
