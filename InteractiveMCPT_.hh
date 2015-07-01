@@ -14,6 +14,7 @@
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
 #include <ObjectTypes/Light/Light.hh>
 
+#include "MonteCuda.hh"
 #include "InfoStructs.hh"
 
 class ImageViewer;
@@ -60,7 +61,7 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
 
     //LoggingInterface
     void log(Logtype _type, QString _message);
-    void log(QString _message);
+	void log(QString _message);
 
     // ToolboxInterface
     void addToolbox(QString _name, QWidget* _toolbox, QIcon* icon);
@@ -71,8 +72,6 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
     void finishJob(QString _jobID );
 
   public:
-
-
     // BaseInterface
     QString name() { return (QString("Interactive MCPT")); }
     QString description( ) { return (QString("")); }
@@ -90,7 +89,9 @@ private slots:
 
     void globalRender();
 
+	void selectBrushBtnPressed();
     void changeRaysPerPixel(int rays) { settings.samplesPerPixel = rays; }
+	void changeBrushSize(int size);
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -164,6 +165,9 @@ private slots:
 
 	  void testFocusIn(QEvent* ev);
 	  void testFocusOut(QEvent* ev);
+
+	  void testMouseMove(QMouseEvent* ev);
+
 
 protected:
       CameraInfo mCam;

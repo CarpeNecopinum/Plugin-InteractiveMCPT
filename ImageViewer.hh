@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QLabel>
-
+#include <OpenFlipper/BasePlugin/LoggingInterface.hh>
 
 class ImageViewer : public QLabel{
     Q_OBJECT

@@ -1,28 +1,29 @@
 #include "ImageViewer.hh"
 
 #include <QMouseEvent>
+#include "InteractiveMCPT_.hh"
 
 void ImageViewer::mousePressEvent(QMouseEvent* ev){
-    emit mousePressed(ev);
 	mIsMouseDown = true;
+    emit mousePressed(ev);
 }
 
 void ImageViewer::mouseReleaseEvent(QMouseEvent* ev){
-	emit mouseReleased(ev);
 	mIsMouseDown = false;
+	emit mouseReleased(ev);
 }
 
 void ImageViewer::mouseMoveEvent(QMouseEvent* ev){
-	emit mouseMoved(ev);
 	mMousePosX = ev->pos().x();
 	mMousePosY = ev->pos().y();
+	emit mouseMoved(ev);
 }
 
 void ImageViewer::enterEvent(QEvent* ev){
-	emit mouseEntered(ev);
 	mIsFocused = true;
+	emit mouseEntered(ev);
 }
 void ImageViewer::leaveEvent(QEvent* ev){
-	emit mouseLeaved(ev);
 	mIsFocused = false;
+	emit mouseLeaved(ev);
 }

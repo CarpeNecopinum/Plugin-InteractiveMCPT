@@ -13,15 +13,25 @@
 #include "Sampling.hh"
 #include "BRDF.hh"
 #include <QMouseEvent>
+
 #include "ImageViewer.hh"
-#include "MonteCuda.hh"
-#include "InfoStructs.hh"
+
+#include "InteractiveDrawing.hh"
 
 #define EPS (1e-6)
 
+InteractiveDrawing mInteractivDrawing;
+
+void InteractiveMCPTPlugin::selectBrushBtnPressed(){
+	mInteractivDrawing.selectBrush();
+}
+
+void InteractiveMCPTPlugin::changeBrushSize(int size){
+	mInteractivDrawing.getBrush().setSize(size);
+}
 
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
-	emit log(LOGERR, QString("Mouse Pressed!"));
+	emit log(LOGERR, QString::number(mInteractivDrawing.getBrush().getSize()));
 }
 
 void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
@@ -34,6 +44,11 @@ void InteractiveMCPTPlugin::testFocusIn(QEvent* ev){
 
 void InteractiveMCPTPlugin::testFocusOut(QEvent* ev){
 	emit log(LOGERR, QString("Focus Out!"));
+}
+
+void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
+	mInteractivDrawing.getBrush().incSize();
+	emit log(LOGERR, QString::number(mInteractivDrawing.getBrush().getSize()));
 }
 
 void InteractiveMCPTPlugin::initializePlugin()
@@ -69,35 +84,39 @@ void InteractiveMCPTPlugin::initializePlugin()
 	imageLabel_->setContextMenuPolicy(Qt::CustomContextMenu);
 	
 	connect(imageLabel_,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(showContextMenu(QPoint)));
-    
 	connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(testMousePressed(QMouseEvent*)));
 	connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(testMouseReleased(QMouseEvent*)));
-    
+	connect(imageLabel_, SIGNAL(mouseMoved(QMouseEvent*)), this, SLOT(testMouseMove(QMouseEvent*)));
 	connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
 	connect(imageLabel_, SIGNAL(mouseLeaved(QEvent*)), this, SLOT(testFocusOut(QEvent*)));
 
 	layout->addWidget(imageLabel_);
 
-
     QVBoxLayout* sidebox = new QVBoxLayout(imageWindow);
+    QGridLayout * sideboxGrid = new QGridLayout(imageWindow);
     layout->addLayout(sidebox);
+    sidebox->addLayout(sideboxGrid);
 
     QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",imageWindow);
     connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
-    sidebox->addWidget(globalRenderButton);
-
-    // Input: Rays per Pixel
-    QGridLayout * sideboxGrid = new QGridLayout(imageWindow);
-    sidebox->addLayout(sideboxGrid);
-    sideboxGrid->addWidget(new QLabel("Rays per Pixel", imageWindow), 0, 0);
-	
+	sideboxGrid->addWidget(globalRenderButton, 0, 0);
     QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
     seRaysPerPixel->setMaximum(64);
     seRaysPerPixel->setMinimum(1);
     connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
     sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
-	sideboxGrid->addWidget(new QPushButton("Test"), 2, 1);
 
+	//Brush GUI
+	QPushButton* brushButton = new QPushButton("Brush", imageWindow);
+	sideboxGrid->addWidget(brushButton, 1, 0);
+	connect(brushButton, SIGNAL(clicked()), this, SLOT(selectBrushBtnPressed));
+
+	QSpinBox * seBrushSize = new QSpinBox(imageWindow);
+	seBrushSize->setMaximum(25);
+	seBrushSize->setMinimum(1);
+	sideboxGrid->addWidget(seBrushSize, 1, 1);
+	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
+	//
     connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
     updateTimer_.setInterval(1000);
     updateTimer_.setSingleShot(false);
@@ -120,16 +139,17 @@ void InteractiveMCPTPlugin::saveImage() {
 
 void InteractiveMCPTPlugin::openWindow() {
     PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH ));
-    uploadGeometry(o_It, PluginFunctions::objectsEnd());
+    
+	//uploadGeometry(o_It, PluginFunctions::objectsEnd());
 
     cancel_ = false;
 
     clearImage();
 
     imageLabel_->resize(PluginFunctions::viewerProperties().glState().viewport_width(),PluginFunctions::viewerProperties().glState().viewport_height());
-    updateImageWidget();
+	updateImageWidget();
     mCam = computeCameraInfo();
-    uploadCameraInfo(mCam);
+	//uploadCameraInfo(mCam);
     imageWindow->show();
 
 }
