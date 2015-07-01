@@ -162,6 +162,18 @@ void InteractiveMCPTPlugin::openWindow() {
 
 }
 
+void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
+{
+    cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
+
+    std::vector<Point>::iterator end = job.pixels.end();
+    for (std::vector<Point>::iterator it = job.pixels.begin(); it != end; ++it)
+    {
+        Point& point = *it;
+        size_t index = point.y * image_.width() + point.x;
+        mQueuedSamples[index]--;
+    }
+}
 
 void InteractiveMCPTPlugin::runJob(RenderJob job)
 {
@@ -176,7 +188,6 @@ void InteractiveMCPTPlugin::runJob(RenderJob job)
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]--;
     }
-
 }
 
 void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y)
@@ -225,6 +236,8 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]++;
     }
+
+    //mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRunJob, job));
     mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
 }
 
@@ -245,7 +258,7 @@ void InteractiveMCPTPlugin::globalRender()
                 return;
             }
 
-            if (job.pixels.size() >= 64) {
+            if (job.pixels.size() >= 256) {
                 queueJob(job);
                 job.pixels.clear();
             }

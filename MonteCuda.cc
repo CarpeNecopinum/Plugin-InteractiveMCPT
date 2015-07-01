@@ -14,7 +14,7 @@ mcTriangle makeTriangle(TriMesh::FaceHandle fh, TriMesh& mesh, uint32_t material
     TriMesh::FaceVertexIter fv_it(mesh, fh);
     for (int i = 0; i < 3; i++)
     {
-        result.corners[i] = mcVertex(mesh.point(*fv_it));
+        result.corners[i] = toCudaVec(mesh.point(*fv_it));
         ++fv_it;
     }
     result.matIndex = material;
@@ -35,7 +35,7 @@ void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::Obje
 
         // Save material
         ACG::SceneGraph::Material material = object.materialNode()->material();
-        mcMaterial mat(
+        mcMaterial mat = make_material(
                     material.diffuseColor(),
                     material.specularColor(),
                     material.shininess(),

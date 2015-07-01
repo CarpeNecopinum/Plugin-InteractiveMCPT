@@ -210,6 +210,8 @@ protected:
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
 
+      void queueJob(RenderJob job);
+      void cudaRunJob(RenderJob job);
 private:
 
 	QTimer updateTimer_;

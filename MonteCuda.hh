@@ -1,54 +1,54 @@
 #include <stdint.h>
 #include <OpenFlipper/BasePlugin/PluginFunctions.hh>
 #include <cuda.h>
+#include <vector_functions.h>
+#include <vector_types.h>
 #include "InfoStructs.hh"
 
 void cudaTest(void);
 
+
+inline float3 toCudaVec(ACG::Vec3d acg) { return make_float3(acg[0], acg[1], acg[2]); }
+inline float3 toCudaVec(ACG::Vec4f acg) { return make_float3(acg[0], acg[1], acg[2]); }
+inline ACG::Vec3d toACG3(float3 cuda) { return ACG::Vec3d(cuda.x, cuda.y, cuda.z); }
+
 struct mcMaterial
 {
-    mcMaterial(ACG::Vec4f diffuse, ACG::Vec4f specular, double exponent, ACG::Vec4f emissive)
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            diffuseColor[i] = diffuse[i];
-            specularColor[i] = specular[i];
-            emissiveColor[i] = emissive[i];
-        }
-        specularExponent = exponent;
-    }
-
-    float diffuseColor[3];
-    float specularColor[3];
+    float3 diffuseColor;
+    float3 specularColor;
     float specularExponent;
-    float emissiveColor[3];
+    float3 emissiveColor;
 };
 
-struct mcVertex
+inline mcMaterial make_material(ACG::Vec4f diffuse, ACG::Vec4f specular, double exponent, ACG::Vec4f emissive)
 {
-    mcVertex() {}
-    mcVertex(ACG::Vec3d point)
-    {
-        x = (float)point[0];
-        y = (float)point[1];
-        z = (float)point[2];
-    }
+    mcMaterial result;
+    result.diffuseColor = toCudaVec(diffuse);
+    result.specularColor = toCudaVec(specular);
+    result.emissiveColor = toCudaVec(emissive);
+    result.specularExponent = exponent;
+    return result;
+}
 
-    float x,y,z;
-};
 
 struct mcTriangle
 {
-    mcVertex corners[3];
+    float3 corners[3];
     uint32_t matIndex;
 };
 
 struct mcCameraInfo
 {
-    float x_dir[3];
-    float y_dir[3];
-    float image_plane_start[3];
-    float eye_point[3];
+    float3 x_dir;
+    float3 y_dir;
+    float3 image_plane_start;
+    float3 eye_point;
+};
+
+struct mcRay
+{
+    float3 origin;
+    float3 direction;
 };
 
 
