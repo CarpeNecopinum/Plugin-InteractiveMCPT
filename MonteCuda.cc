@@ -1,3 +1,5 @@
+#ifdef HAS_CUDA
+
 #include "MonteCuda.hh"
 
 #include <vector>
@@ -5,7 +7,7 @@
 #include <ObjectTypes/TriangleMesh/TriangleMeshTypes.hh>
 #include <ObjectTypes/TriangleMesh/PluginFunctionsTriangleMesh.hh>
 
-
+size_t cudaBlockSize() { return CUDA_BLOCK_SIZE; }
 
 mcTriangle makeTriangle(TriMesh::FaceHandle fh, TriMesh& mesh, uint32_t material)
 {
@@ -53,3 +55,5 @@ void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::Obje
     }
     uploadBuffers(materials.data(), materials.size(), triangles.data(), triangles.size());
 }
+
+#endif

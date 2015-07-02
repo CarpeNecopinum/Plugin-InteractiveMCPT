@@ -59,10 +59,14 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
 
     int currentRow = 0;
 
+#ifdef HAS_CUDA
     // Cuda Checkbox
     QCheckBox* cudaCheckBox = new QCheckBox("Use Cuda for Rendering", parent);
     connect(cudaCheckBox, SIGNAL(stateChanged(int)), this, SLOT(setCudaActive(int)));
     layout->addWidget(cudaCheckBox, currentRow++, 0, 1, 2);
+#else
+    layout->addWidget(new QLabel("This would be more fun with Cuda!", parent), currentRow++, 0, 1, 2);
+#endif
 
     // Global Render button
     QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",parent);
@@ -107,6 +111,12 @@ void InteractiveMCPTPlugin::initializePlugin()
     mSamples = 0;
     mQueuedSamples = 0;
 	mSettings.samplesPerPixel = 1;
+
+#ifdef HAS_CUDA
+    std::cout << "Compiled with CUDA ... nice." << std::endl;
+#else
+    std::cout << "No CUDA here ... not nice." << std::endl;
+#endif
 
 	// Create the toolbox
 	QWidget* toolbox = new QWidget();
@@ -181,14 +191,18 @@ void InteractiveMCPTPlugin::openWindow() {
     mCam = computeCameraInfo();
 
     PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH ));
+
+#ifdef HAS_CUDA
     uploadGeometry(o_It, PluginFunctions::objectsEnd());
     uploadCameraInfo(mCam);
+#endif
 
     imageWindow->show();
 }
 
 void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 {
+#ifdef HAS_CUDA
     cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
 
     std::vector<Point>::iterator end = job.pixels.end();
@@ -198,6 +212,11 @@ void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]--;
     }
+    updateImageWidget();
+#else
+    std::cerr << "You don't have compiled with CUDA you scrub!" << std::endl;
+    std::exit(-1);
+#endif
 }
 
 void InteractiveMCPTPlugin::runJob(RenderJob job)
@@ -265,7 +284,7 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
         size_t count = job.pixels.size();
 
         Point p = { -1 , -1 };
-        while (job.pixels.size() % cudaBlockSize() != 0) job.pixels.push_back(p);
+        while (job.pixels.size() % CUDA_BLOCK_SIZE != 0) job.pixels.push_back(p);
 
         cudaRunJob(job);
     }

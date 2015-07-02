@@ -338,7 +338,7 @@ void cudaTracePixels(std::vector<Point> &pixels, RenderSettings settings, ACG::V
     float3* devResults;
     cudaMalloc(&devResults, sizeof(float3) * pixels.size()); CUDA_CHECK
 
-    assert(pixels.size() % cudaBlockSize() == 0);
+    assert(pixels.size() % CUDA_BLOCK_SIZE == 0);
 
     std::cout << "Tracing....." << pixels.size() << std::endl;
 

@@ -37,7 +37,7 @@ void InteractiveDrawing::testBrush(InteractiveMCPTPlugin* plugin, int posX, int 
 				renderJob.pixels.push_back(pixel);
 			}
 
-            if (renderJob.pixels.size() >= 128){
+            if (renderJob.pixels.size() >= CUDA_BLOCK_SIZE){
 				plugin->queueJob(renderJob);
 				renderJob.pixels.clear();
 			}

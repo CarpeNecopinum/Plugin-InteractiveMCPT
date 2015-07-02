@@ -12,7 +12,7 @@ inline float3 toCudaVec(ACG::Vec3d acg) { return make_float3(acg[0], acg[1], acg
 inline float3 toCudaVec(ACG::Vec4f acg) { return make_float3(acg[0], acg[1], acg[2]); }
 inline ACG::Vec3d toACG3(float3 cuda) { return ACG::Vec3d(cuda.x, cuda.y, cuda.z); }
 
-inline size_t cudaBlockSize() { return 128; }
+size_t cudaBlockSize();
 
 struct mcMaterial
 {
