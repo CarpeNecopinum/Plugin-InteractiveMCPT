@@ -75,6 +75,7 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
     // BaseInterface
     QString name() { return (QString("Interactive MCPT")); }
     QString description( ) { return (QString("")); }
+    const RenderSettings& getSettings() const { return mSettings; }
 
 private slots:
 
@@ -88,6 +89,7 @@ private slots:
     void saveImage();
 
     void globalRender();
+    void setCudaActive(int active);
 
 	void selectBrushBtnPressed();
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
@@ -211,25 +213,26 @@ protected:
       std::vector<QFuture<void> > mRunningFutures;
 
 private:
+    QTimer updateTimer_;
+    bool mUseCuda = false;
 
-	QTimer updateTimer_;
-     // The rendered image
-     QImage image_;
-     ImageViewer* imageLabel_;
-     QWidget* imageWindow;
+    // The rendered image
+    QImage image_;
+    ImageViewer* imageLabel_;
+    QWidget* imageWindow;
 
 
-     // Light sources in the scene
-     std::vector< LightSource > lights_;
+    // Light sources in the scene
+    std::vector< LightSource > lights_;
 
-     // If processing has to be canceled, this variable is set to true
-     bool cancel_;
+    // If processing has to be canceled, this variable is set to true
+    bool cancel_;
 
-     void clearImage();
+    void clearImage();
 
-     void tracePixel(size_t x, size_t y);
+    void tracePixel(size_t x, size_t y);
 
-	 void initializeDrawingGUI(QGridLayout* layout, QWidget* parent = 0); // Called in initializePlugin.
+    void initializeDrawingGUI(QGridLayout* layout, QWidget* parent = 0); // Called in initializePlugin.
 };
 
 #endif //INTERACTIVEMCPT_HH

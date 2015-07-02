@@ -17,7 +17,7 @@ void InteractiveDrawing::toggleBrush(){
 void InteractiveDrawing::testBrush(InteractiveMCPTPlugin* plugin, int posX, int posY){
 
 	InteractiveMCPTPlugin::RenderJob renderJob;
-	renderJob.settings.samplesPerPixel = _brush.getDepth();
+    renderJob.settings = plugin->getSettings();
 	int brushSize = _brush.getSize();
 
 	const int imageWidth = plugin->getImageViewer()->getImage()->width();
@@ -37,7 +37,7 @@ void InteractiveDrawing::testBrush(InteractiveMCPTPlugin* plugin, int posX, int 
 				renderJob.pixels.push_back(pixel);
 			}
 
-			if (renderJob.pixels.size() >= 64){
+            if (renderJob.pixels.size() >= 128){
 				plugin->queueJob(renderJob);
 				renderJob.pixels.clear();
 			}

@@ -57,19 +57,17 @@ void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
 
 void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
 
-	QLabel* toolTipInfo = new QLabel(imageWindow);
-	toolTipInfo->setText("Read tooltips for information.");
-	layout->addWidget(toolTipInfo, 0, 0);
+    int currentRow = 0;
 
-	QPushButton* globalRenderButton = new QPushButton("Trace full Image", imageWindow);
-	connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
-	layout->addWidget(globalRenderButton, 1, 0);
-	QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
-	seRaysPerPixel->setMaximum(64);
-	seRaysPerPixel->setMinimum(1);
-	seRaysPerPixel->setToolTip("Full Image Samples per Pixel");
-	connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
-	layout->addWidget(seRaysPerPixel, 1, 1);
+    // Cuda Checkbox
+    QCheckBox* cudaCheckBox = new QCheckBox("Use Cuda for Rendering", parent);
+    connect(cudaCheckBox, SIGNAL(stateChanged(int)), this, SLOT(setCudaActive(int)));
+    layout->addWidget(cudaCheckBox, currentRow++, 0, 1, 2);
+
+    // Global Render button
+    QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",parent);
+    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
+    layout->addWidget(globalRenderButton, currentRow++, 0, 1, 2);
 
 	//Brush GUI
 	QPushButton* brushButton = new QPushButton("Brush", parent);
@@ -77,27 +75,29 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
 	brushButton->setCheckable(true);
 	brushButton->setChecked(false);
 	brushButton->setToolTip("'Brush' tool");
-	layout->addWidget(brushButton, 2, 0);
+    layout->addWidget(brushButton, currentRow++, 0, 1, 2);
 	connect(brushButton, SIGNAL(clicked()), this, SLOT(selectBrushBtnPressed));
 
+
+    // Rays per Pixel spinbox
+    QSpinBox * seRaysPerPixel = new QSpinBox(parent);
+    seRaysPerPixel->setMaximum(4096);
+    seRaysPerPixel->setMinimum(1);
+    connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
+    layout->addWidget(new QLabel("Rays per Pixel", parent), currentRow, 0);
+    layout->addWidget(seRaysPerPixel, currentRow++, 1);
+
+    // Brush Size
 	QSpinBox * seBrushSize = new QSpinBox(parent);
 	seBrushSize->setMaximum(50);
-	seBrushSize->setMinimum(1);
-
-	seBrushSize->setToolTip("Brush radius");
-	layout->addWidget(seBrushSize, 2, 1);
+    seBrushSize->setMinimum(1);
+    layout->addWidget(new QLabel("Brush Radius", parent), currentRow, 0);
+    layout->addWidget(seBrushSize, currentRow++, 1);
 	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
 
-	QSpinBox * seBrushDepth = new QSpinBox(parent);
-	seBrushDepth->setMaximum(64);
-	seBrushDepth->setMinimum(1);
-	seBrushDepth->setToolTip("Brush Samples per Pixel");
-	layout->addWidget(seBrushDepth, 3, 1);
-	connect(seBrushDepth, SIGNAL(valueChanged(int)), this, SLOT(changeBrushDepth(int)));
-	//
 
     // dummy stretch label
-    layout->addWidget(new QLabel("", parent), 4, 0, 1, 2);
+    layout->addWidget(new QLabel("", parent), currentRow, 0, 1, 2);
     layout->setRowStretch(4, 1);
 }
 
@@ -152,7 +152,7 @@ void InteractiveMCPTPlugin::initializePlugin()
 	initializeDrawingGUI(sideboxGrid, imageWindow);
 
     connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
-    updateTimer_.setInterval(1000);
+    updateTimer_.setInterval(333);
     updateTimer_.setSingleShot(false);
 }
 
@@ -172,10 +172,6 @@ void InteractiveMCPTPlugin::saveImage() {
 }
 
 void InteractiveMCPTPlugin::openWindow() {
-    PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH ));
-    
-	//uploadGeometry(o_It, PluginFunctions::objectsEnd());
-
     cancel_ = false;
 
     clearImage();
@@ -183,14 +179,17 @@ void InteractiveMCPTPlugin::openWindow() {
     imageLabel_->resize(PluginFunctions::viewerProperties().glState().viewport_width(),PluginFunctions::viewerProperties().glState().viewport_height());
 	updateImageWidget();
     mCam = computeCameraInfo();
-	//uploadCameraInfo(mCam);
-    imageWindow->show();
 
+    PluginFunctions::ObjectIterator o_It( PluginFunctions::ALL_OBJECTS, DataType( DATA_TRIANGLE_MESH ));
+    uploadGeometry(o_It, PluginFunctions::objectsEnd());
+    uploadCameraInfo(mCam);
+
+    imageWindow->show();
 }
 
 void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 {
-    //cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
+    cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
 
     std::vector<Point>::iterator end = job.pixels.end();
     for (std::vector<Point>::iterator it = job.pixels.begin(); it != end; ++it)
@@ -261,8 +260,20 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
         mQueuedSamples[index]++;
     }
 
-    //mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRunJob, job));
-    mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
+    if (mUseCuda)
+    {
+        size_t count = job.pixels.size();
+
+        Point p = { -1 , -1 };
+        while (job.pixels.size() % cudaBlockSize() != 0) job.pixels.push_back(p);
+
+        cudaRunJob(job);
+    }
+    else
+    {
+        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
+        if (!updateTimer_.isActive()) updateTimer_.start();
+    }
 }
 
 
@@ -282,7 +293,7 @@ void InteractiveMCPTPlugin::globalRender()
                 return;
             }
 
-            if (job.pixels.size() >= 256) {
+            if (job.pixels.size() >= 16384) {
                 queueJob(job);
                 job.pixels.clear();
             }
@@ -293,19 +304,21 @@ void InteractiveMCPTPlugin::globalRender()
     }
     if (!job.pixels.empty())
         queueJob(job);
+}
 
-    updateTimer_.start();
+void InteractiveMCPTPlugin::setCudaActive(int active) {
+    mUseCuda = !!active;
 }
 
 
 void InteractiveMCPTPlugin::canceledJob(QString /*_jobId*/ ) {
-	emit log(LOGERR, "Cancel Button");
-	cancel_ = true;
+    emit log(LOGERR, "Cancel Button");
+    cancel_ = true;
 }
 
 void InteractiveMCPTPlugin::threadFinished() {
 
-	// Stop the update timer
+    // Stop the update timer
     //updateTimer_.stop();
     //updateTimer_.disconnect();
 
