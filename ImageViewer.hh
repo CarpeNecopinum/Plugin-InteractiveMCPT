@@ -14,10 +14,14 @@ signals:
 	void mouseEntered(QEvent* ev);
 
 public:
-    ImageViewer(QWidget* parent = 0) : QLabel(parent){}
+	ImageViewer(QImage* image, QWidget* parent = 0) : QLabel(parent){
+		this->image_ = image;
+	}
 
 	inline bool isMouseDown(){ return mIsMouseDown; }
 	inline bool isFocused(){ return mIsFocused; }
+
+	QImage* getImage(){ return image_; }
 
 private:
 	bool mIsMouseDown = false;
@@ -25,6 +29,8 @@ private:
 
 	float mMousePosX = 0.0f;
 	float mMousePosY = 0.0f;
+
+	QImage* image_;
 
 protected:
 	virtual void enterEvent(QEvent* ev);

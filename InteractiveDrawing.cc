@@ -7,23 +7,40 @@ void InteractiveDrawing::update(InteractiveMCPTPlugin* plugin, ImageViewer* imag
 	
 }
 
-void InteractiveDrawing::testJob(InteractiveMCPTPlugin* plugin, int posX, int posY){
+void InteractiveDrawing::toggleBrush(){
+	if (_aktivTools == BRUSH)
+		_aktivTools = NONE;
+	else
+		_aktivTools = BRUSH;
+}
+
+void InteractiveDrawing::testBrush(InteractiveMCPTPlugin* plugin, int posX, int posY){
 
 	InteractiveMCPTPlugin::RenderJob renderJob;
-	renderJob.settings.samplesPerPixel = 1;
+	renderJob.settings.samplesPerPixel = _brush.getDepth();
 	int brushSize = _brush.getSize();
 
-	for (int x = 0; x < brushSize; ++x){
-		for (int y = 0; y < brushSize; ++y){
+	const int imageWidth = plugin->getImageViewer()->getImage()->width();
+	const int imageHeight = plugin->getImageViewer()->getImage()->height();
 
-			Point pixel = { posX + x, posY + y };
+	int currX = 0;
+	int currY = 0;
+
+	for (int x = -brushSize; x < brushSize; ++x){
+		for (int y = -brushSize; y < brushSize; ++y){
+
+			currX = posX + x;
+			currY = posY + y;
+
+			if (currX < imageWidth && currY < imageHeight && currX >= 0 && currY >= 0){
+				Point pixel = { currX, currY};
+				renderJob.pixels.push_back(pixel);
+			}
 
 			if (renderJob.pixels.size() >= 64){
 				plugin->queueJob(renderJob);
 				renderJob.pixels.clear();
 			}
-
-			renderJob.pixels.push_back(pixel);
 		}
 	}
 

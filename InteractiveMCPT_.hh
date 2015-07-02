@@ -92,6 +92,7 @@ private slots:
 	void selectBrushBtnPressed();
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
+	void changeBrushDepth(int depth);
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -170,6 +171,9 @@ private slots:
 
 public:
 
+	ImageViewer* getImageViewer(){
+		return imageLabel_;
+	}
 
 	QTimer &getUpdateTimer(){
 		return updateTimer_;

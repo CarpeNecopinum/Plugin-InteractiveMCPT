@@ -5,12 +5,14 @@ class InteractiveMCPTPlugin;
 
 class Brush{
 public:
-	inline const float getSize(){ return _size; }
+	inline const int getSize(){ return _size; }
 	inline void setSize(int size){ _size = size; }
-	inline void incSize(){ _size++; }
-	inline void decSize(){ _size--; }
+
+	inline const int getDepth(){ return _depth; }
+	inline void setDepth(int depth){ _depth = depth; }
 private:
-	int _size = 0;
+	int _size = 1;
+	int _depth = 1;
 };
 
 class InteractiveDrawing{
@@ -23,10 +25,12 @@ class InteractiveDrawing{
 public:
 
 	inline Brush& getBrush(){ return _brush; }
-	inline void selectBrush(){ _aktivTools = BRUSH; }
+	
+	void toggleBrush();
+
 	inline void deselectTool() { _aktivTools = NONE; }
 
-	void testJob(InteractiveMCPTPlugin* plugin, int posX, int posY);
+	void testBrush(InteractiveMCPTPlugin* plugin, int posX, int posY);
 
 	void update(InteractiveMCPTPlugin* plugin, ImageViewer* imageViewer);
 

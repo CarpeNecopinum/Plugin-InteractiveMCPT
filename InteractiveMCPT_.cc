@@ -23,16 +23,20 @@
 InteractiveDrawing mInteractivDrawing;
 
 void InteractiveMCPTPlugin::selectBrushBtnPressed(){
-	mInteractivDrawing.selectBrush();
+	mInteractivDrawing.toggleBrush();
 }
 
 void InteractiveMCPTPlugin::changeBrushSize(int size){
 	mInteractivDrawing.getBrush().setSize(size);
 }
 
+void InteractiveMCPTPlugin::changeBrushDepth(int depth){
+	mInteractivDrawing.getBrush().setDepth(depth);
+}
+
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
 	emit log(LOGERR, QString("MousePressed"));
-	mInteractivDrawing.testJob(this, ev->x(), ev->y());
+	mInteractivDrawing.testBrush(this, ev->x(), ev->y());
 }
 
 void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
@@ -54,14 +58,25 @@ void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
 void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
 	//Brush GUI
 	QPushButton* brushButton = new QPushButton("Brush", parent);
-	layout->addWidget(brushButton, 1, 0);
+	brushButton->setCheckable(true);
+	brushButton->setChecked(false);
+	brushButton->setToolTip("'Brush' tool");
+	layout->addWidget(brushButton, 2, 0);
 	connect(brushButton, SIGNAL(clicked()), this, SLOT(selectBrushBtnPressed));
 
 	QSpinBox * seBrushSize = new QSpinBox(parent);
-	seBrushSize->setMaximum(25);
+	seBrushSize->setMaximum(50);
 	seBrushSize->setMinimum(1);
-	layout->addWidget(seBrushSize, 1, 1);
+	seBrushSize->setToolTip("Brush radius");
+	layout->addWidget(seBrushSize, 2, 1);
 	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
+
+	QSpinBox * seBrushDepth = new QSpinBox(parent);
+	seBrushDepth->setMaximum(16);
+	seBrushDepth->setMinimum(1);
+	seBrushDepth->setToolTip("Brush Samples per Pixel");
+	layout->addWidget(seBrushDepth, 3, 1);
+	connect(seBrushDepth, SIGNAL(valueChanged(int)), this, SLOT(changeBrushDepth(int)));
 	//
 }
 
@@ -93,7 +108,7 @@ void InteractiveMCPTPlugin::initializePlugin()
     imageWindow->setLayout(layout);
     imageWindow->resize(800, 600);
 
-    imageLabel_ = new ImageViewer(imageWindow);
+    imageLabel_ = new ImageViewer(&image_, imageWindow);
 	imageLabel_->setBackgroundRole(QPalette::Base);
 	imageLabel_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
 	imageLabel_->setScaledContents(false);
@@ -113,14 +128,19 @@ void InteractiveMCPTPlugin::initializePlugin()
     layout->addLayout(sidebox);
     sidebox->addLayout(sideboxGrid);
 
-    QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",imageWindow);
+	QLabel* toolTipInfo = new QLabel(imageWindow);
+	toolTipInfo->setText("Read tooltips for information.");
+	sideboxGrid->addWidget(toolTipInfo, 0, 0);
+
+    QPushButton* globalRenderButton = new QPushButton("Trace full Image",imageWindow);
     connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
-	sideboxGrid->addWidget(globalRenderButton, 0, 0);
+	sideboxGrid->addWidget(globalRenderButton, 1, 0);
     QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
     seRaysPerPixel->setMaximum(64);
     seRaysPerPixel->setMinimum(1);
+	seRaysPerPixel->setToolTip("Full Image Samples per Pixel");
     connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
-    sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
+    sideboxGrid->addWidget(seRaysPerPixel, 1, 1);
 
 	//gui and interactive stuff
 	initializeDrawingGUI(sideboxGrid, imageWindow);
@@ -218,8 +238,6 @@ CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
 
 void InteractiveMCPTPlugin::queueJob(RenderJob job)
 {
-	emit log(LOGERR, QString::number(job.pixels.size()));
-
     for (Point point : job.pixels)
     {
         size_t index = point.y * image_.width() + point.x;
