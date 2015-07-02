@@ -4,7 +4,14 @@ find_package(CXX11 REQUIRED)
 
 # --------------------------------------------
 # If you don't want to use CUDA, set this to 0
+# vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
 set(USE_CUDA 1)
+
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# just here, nothing else, don't try to
+# comment out Cuda-related stuff
+# and especially don't commit it!
 # --------------------------------------------
 
 
