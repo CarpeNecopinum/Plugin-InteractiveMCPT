@@ -52,17 +52,36 @@ void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
 }
 
 void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
+
+    // Global Render button
+    QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",parent);
+    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
+    layout->addWidget(globalRenderButton, 0, 0, 1, 2);
+
+    // Rays per Pixel spinbox
+    QSpinBox * seRaysPerPixel = new QSpinBox(parent);
+    seRaysPerPixel->setMaximum(64);
+    seRaysPerPixel->setMinimum(1);
+    connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
+    layout->addWidget(new QLabel("Rays per Pixel", parent), 1, 0);
+    layout->addWidget(seRaysPerPixel, 1, 1);
+
 	//Brush GUI
 	QPushButton* brushButton = new QPushButton("Brush", parent);
-	layout->addWidget(brushButton, 1, 0);
+    layout->addWidget(brushButton, 2, 0, 1, 2);
 	connect(brushButton, SIGNAL(clicked()), this, SLOT(selectBrushBtnPressed));
 
 	QSpinBox * seBrushSize = new QSpinBox(parent);
 	seBrushSize->setMaximum(25);
 	seBrushSize->setMinimum(1);
-	layout->addWidget(seBrushSize, 1, 1);
+    layout->addWidget(new QLabel("Brush Radius", parent), 3, 0);
+    layout->addWidget(seBrushSize, 3, 1);
 	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
 	//
+
+    // dummy stretch label
+    layout->addWidget(new QLabel("", parent), 4, 0, 1, 2);
+    layout->setRowStretch(4, 1);
 }
 
 void InteractiveMCPTPlugin::initializePlugin()
@@ -108,19 +127,8 @@ void InteractiveMCPTPlugin::initializePlugin()
 
 	layout->addWidget(imageLabel_);
 
-    QVBoxLayout* sidebox = new QVBoxLayout(imageWindow);
     QGridLayout * sideboxGrid = new QGridLayout(imageWindow);
-    layout->addLayout(sidebox);
-    sidebox->addLayout(sideboxGrid);
-
-    QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",imageWindow);
-    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
-	sideboxGrid->addWidget(globalRenderButton, 0, 0);
-    QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
-    seRaysPerPixel->setMaximum(64);
-    seRaysPerPixel->setMinimum(1);
-    connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
-    sideboxGrid->addWidget(seRaysPerPixel, 0, 1);
+    layout->addLayout(sideboxGrid);
 
 	//gui and interactive stuff
 	initializeDrawingGUI(sideboxGrid, imageWindow);

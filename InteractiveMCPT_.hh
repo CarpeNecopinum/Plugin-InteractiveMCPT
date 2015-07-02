@@ -175,18 +175,14 @@ public:
 		return updateTimer_;
 	}
 
-	struct RenderSettings
-	{
-		int samplesPerPixel;
-	};
-
 	struct RenderJob
 	{
 		RenderSettings settings;
 		std::vector<Point> pixels;
 	};
 
-	void queueJob(RenderJob job);
+    void queueJob(RenderJob job);
+    void cudaRunJob(RenderJob job);
 
 protected:
       CameraInfo mCam;
@@ -210,8 +206,6 @@ protected:
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
 
-      void queueJob(RenderJob job);
-      void cudaRunJob(RenderJob job);
 private:
 
 	QTimer updateTimer_;
