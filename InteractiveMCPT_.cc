@@ -56,8 +56,24 @@ void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
 }
 
 void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
+
+	QLabel* toolTipInfo = new QLabel(imageWindow);
+	toolTipInfo->setText("Read tooltips for information.");
+	layout->addWidget(toolTipInfo, 0, 0);
+
+	QPushButton* globalRenderButton = new QPushButton("Trace full Image", imageWindow);
+	connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
+	layout->addWidget(globalRenderButton, 1, 0);
+	QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
+	seRaysPerPixel->setMaximum(64);
+	seRaysPerPixel->setMinimum(1);
+	seRaysPerPixel->setToolTip("Full Image Samples per Pixel");
+	connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
+	layout->addWidget(seRaysPerPixel, 1, 1);
+
 	//Brush GUI
 	QPushButton* brushButton = new QPushButton("Brush", parent);
+
 	brushButton->setCheckable(true);
 	brushButton->setChecked(false);
 	brushButton->setToolTip("'Brush' tool");
@@ -67,17 +83,22 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
 	QSpinBox * seBrushSize = new QSpinBox(parent);
 	seBrushSize->setMaximum(50);
 	seBrushSize->setMinimum(1);
+
 	seBrushSize->setToolTip("Brush radius");
 	layout->addWidget(seBrushSize, 2, 1);
 	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
 
 	QSpinBox * seBrushDepth = new QSpinBox(parent);
-	seBrushDepth->setMaximum(16);
+	seBrushDepth->setMaximum(64);
 	seBrushDepth->setMinimum(1);
 	seBrushDepth->setToolTip("Brush Samples per Pixel");
 	layout->addWidget(seBrushDepth, 3, 1);
 	connect(seBrushDepth, SIGNAL(valueChanged(int)), this, SLOT(changeBrushDepth(int)));
 	//
+
+    // dummy stretch label
+    layout->addWidget(new QLabel("", parent), 4, 0, 1, 2);
+    layout->setRowStretch(4, 1);
 }
 
 void InteractiveMCPTPlugin::initializePlugin()
@@ -123,24 +144,9 @@ void InteractiveMCPTPlugin::initializePlugin()
 
 	layout->addWidget(imageLabel_);
 
-    QVBoxLayout* sidebox = new QVBoxLayout(imageWindow);
     QGridLayout * sideboxGrid = new QGridLayout(imageWindow);
-    layout->addLayout(sidebox);
-    sidebox->addLayout(sideboxGrid);
 
-	QLabel* toolTipInfo = new QLabel(imageWindow);
-	toolTipInfo->setText("Read tooltips for information.");
-	sideboxGrid->addWidget(toolTipInfo, 0, 0);
-
-    QPushButton* globalRenderButton = new QPushButton("Trace full Image",imageWindow);
-    connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
-	sideboxGrid->addWidget(globalRenderButton, 1, 0);
-    QSpinBox * seRaysPerPixel = new QSpinBox(imageWindow);
-    seRaysPerPixel->setMaximum(64);
-    seRaysPerPixel->setMinimum(1);
-	seRaysPerPixel->setToolTip("Full Image Samples per Pixel");
-    connect(seRaysPerPixel, SIGNAL(valueChanged(int)), this, SLOT(changeRaysPerPixel(int)));
-    sideboxGrid->addWidget(seRaysPerPixel, 1, 1);
+	layout->addLayout(sideboxGrid);
 
 	//gui and interactive stuff
 	initializeDrawingGUI(sideboxGrid, imageWindow);
@@ -182,6 +188,18 @@ void InteractiveMCPTPlugin::openWindow() {
 
 }
 
+void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
+{
+    //cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
+
+    std::vector<Point>::iterator end = job.pixels.end();
+    for (std::vector<Point>::iterator it = job.pixels.begin(); it != end; ++it)
+    {
+        Point& point = *it;
+        size_t index = point.y * image_.width() + point.x;
+        mQueuedSamples[index]--;
+    }
+}
 
 void InteractiveMCPTPlugin::runJob(RenderJob job)
 {
@@ -196,7 +214,6 @@ void InteractiveMCPTPlugin::runJob(RenderJob job)
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]--;
     }
-
 }
 
 void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y)
@@ -243,6 +260,8 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]++;
     }
+
+    //mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRunJob, job));
     mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
 }
 
@@ -263,7 +282,7 @@ void InteractiveMCPTPlugin::globalRender()
                 return;
             }
 
-            if (job.pixels.size() >= 64) {
+            if (job.pixels.size() >= 256) {
                 queueJob(job);
                 job.pixels.clear();
             }
