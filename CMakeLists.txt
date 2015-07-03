@@ -18,6 +18,7 @@ set(USE_CUDA 1)
 if(USE_CUDA)
 openflipper_plugin (
     CFLAGSADD "${CXX11_FLAGS} -g -ffast-math"
+    DIRS "Cuda"
     DEPS CUDA
 )
 else()

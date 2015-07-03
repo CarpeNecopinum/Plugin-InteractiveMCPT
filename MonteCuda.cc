@@ -36,7 +36,7 @@ void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::Obje
         TriMesh& mesh = *( PluginFunctions::triMeshObject(&object)->mesh() );
 
         // Save material
-        ACG::SceneGraph::Material material = object.materialNode()->material();
+        ACG::SceneGraph::Material& material = object.materialNode()->material();
         mcMaterial mat = make_material(
                     material.diffuseColor(),
                     material.specularColor(),

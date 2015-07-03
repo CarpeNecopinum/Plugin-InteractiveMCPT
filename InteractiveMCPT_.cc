@@ -475,6 +475,7 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
 
     Color reflected = BRDF::phongBRDF(hit.material, _ray.direction, reflectedRay.direction, hit.normal)
                       * trace(reflectedRay, _recursions + 1) * costheta / density;
+
     return (emitted + reflected);
 }
 

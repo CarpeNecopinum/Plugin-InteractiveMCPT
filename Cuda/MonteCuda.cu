@@ -7,6 +7,10 @@
 #include <vector_functions.h>
 #include <iostream>
 
+#include "Geometry.hh"
+#include "Sampling.hh"
+#include "BRDF.hh"
+
 #define CUDA_CHECK cudaCheck(__LINE__);
 
 
@@ -21,215 +25,29 @@ void cudaCheck(int line)
 
 /** CUDA Part **/
 
-
 __device__ float mcBrightness(const float3& color) {
     // Convert to Y (Yuv Color space)
     return (0.299f * color.x + 0.587f * color.y + 0.114f * color.z);
 }
 
-__device__ float3 mcMirror(const float3& direction, const float3& normal)
+
+
+template<int RECURSIONS_LEFT>
+__device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount, curandState* state)
 {
-    return direction - normal * 2.f * dot(normal, direction);
-}
-
-__global__ void fillWithOne(int* data)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    data[idx] = 1;
-}
-
-struct mcIntersection
-{
-    float3 position;
-    float3 normal;
-    float depth;
-    mcMaterial material;
-};
-
-__device__ float3 clampToAxis(const float3 &n) {
-    if(abs(n.x) > std::fabs(n.y) && std::fabs(n.x) > std::fabs(n.z)) {
-        return make_float3(0,0,1);
-    } else if(std::fabs(n.y) > std::fabs(n.x) && std::fabs(n.y) > std::fabs(n.z)) {
-        return make_float3(1,0,0);
-    }
-    return make_float3(0,1,0);
-}
-
-__device__ float mcDensityCosPowerTheta(const float3& z, float exponent, const float3& direction)
-{
-    float costheta = dot(z, direction);
-    float theta = acos(costheta);
-    return (exponent + 1.0) * pow(costheta, exponent) * sin(theta);
-}
-
-__device__ float mcDensityCosTheta(float3 z, float3 direction)
-{
-    return mcDensityCosPowerTheta(z, 1.f, direction);
-}
-
-__device__ float3 mcPhong(const float3& incoming, const float3& outgoing, const float3& normal, mcMaterial& mat)
-{
-    float3 reflected = mcMirror(incoming, normal);
-    float exponent = mat.specularExponent;
-    float cosPhi = dot(outgoing, reflected);
-    float cosTheta = dot(outgoing, normal);
-
-    return mat.specularColor * pow(cosPhi, exponent) / cosTheta + mat.diffuseColor;
-}
-
-__device__ float3 mcRandomDirCosPowerTheta(float3 normal, float exponent, curandState* state )
-{
-    // Generate Tangent System
-    float3 y = clampToAxis(normal);
-    float3 x = normalize(cross(normal, y));
-    y = normalize(cross(x, normal));
-
-    float xi1 = curand_uniform(state);
-    float xi2 = curand_uniform(state);
-
-    float costheta = pow(xi1, 1.0f / (exponent + 1.0f));
-    float theta = acos(costheta);
-    float phi = 2.0f * M_PI * xi2;
-
-    return
-        x * cos(phi) * sin(theta) +
-        y * sin(phi) * sin(theta) +
-        normal * cos(theta);
-}
-
-__device__ float3 mcRandomDirCosTheta(float3 normal, curandState* state)
-{
-    return mcRandomDirCosPowerTheta(normal, 1.0f, state);
-}
-
-__device__ bool mcBaryTest(float3 point, mcTriangle& triangle)
-{
-    float3 p = point;
-    float3 u = triangle.corners[0];
-    float3 v = triangle.corners[1];
-    float3 w = triangle.corners[2];
-
-    float3 result;
-
-    float3  vu = v - u,
-    wu = w - u,
-    pu = p - u;
-
-    // find largest absolute coordinate of normal
-    float nx = vu.y * wu.z - vu.z * wu.y,
-                 ny        = vu.z * wu.x - vu.x * wu.z,
-                 nz        = vu.x * wu.y - vu.y * wu.x,
-                 ax        = abs(nx),
-                 ay        = abs(ny),
-                 az        = abs(nz);
-
-    unsigned char max_coord;
-
-    if ( ax > ay ) {
-        if ( ax > az ) {
-            max_coord = 0;
-        }
-        else {
-            max_coord = 2;
-        }
-    }
-    else {
-        if ( ay > az ) {
-            max_coord = 1;
-        }
-        else {
-            max_coord = 2;
-        }
-    }
-
-    // solve 2D problem
-    switch (max_coord)
-    {
-        case 0:
-            {
-                if (1.0+ax == 1.0) return false;
-                result.y = 1.0 + (pu.y*wu.z-pu.z*wu.y)/nx - 1.0;
-                result.z = 1.0 + (vu.y*pu.z-vu.z*pu.y)/nx - 1.0;
-                result.x = 1.0 - result.y - result.z;
-            }
-            break;
-
-        case 1:
-            {
-                if (1.0+ay == 1.0) return false;
-                result.y = 1.0 + (pu.z*wu.x-pu.x*wu.z)/ny - 1.0;
-                result.z = 1.0 + (vu.z*pu.x-vu.x*pu.z)/ny - 1.0;
-                result.x = 1.0 - result.y - result.z;
-            }
-            break;
-
-        case 2:
-            {
-                if (1.0+az == 1.0) return false;
-                result.y = 1.0 + (pu.x*wu.y-pu.y*wu.x)/nz - 1.0;
-                result.z = 1.0 + (vu.x*pu.y-vu.y*pu.x)/nz - 1.0;
-                result.x = 1.0 - result.y - result.z;
-            }
-            break;
-    }
-
-    return (result.x >= 0.f && result.y >= 0.f && result.z >= 0.f);
-}
-
-__device__ mcIntersection mcIntersectTriangle(mcRay& ray, mcTriangle& triangle)
-{
-    mcIntersection result;
-    result.depth = FLT_MAX;
-
-    result.normal = normalize(cross(triangle.corners[1] - triangle.corners[0], triangle.corners[2] - triangle.corners[0]));
-    float depth = dot(triangle.corners[0] - ray.origin, result.normal) / dot(ray.direction, result.normal);
-    if (depth <= 0.001f) { return result; }
-
-    float3 intersection = ray.origin + depth * ray.direction;
-
-    if (mcBaryTest(intersection, triangle)) result.depth = depth;
-
-    return result;
-}
-
-__device__ mcIntersection mcIntersectScene(mcRay& ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount)
-{
-
-    mcIntersection result;
-    result.depth = FLT_MAX;
-
-    for (size_t i = 0; i < triCount; ++i)
-    {
-        mcIntersection next = mcIntersectTriangle(ray, geometry[i]);
-        if (next.depth < result.depth)
-        {
-            result = next;
-            result.material = mats[geometry[i].matIndex];
-        }
-    }
-
-    return result;
-}
-
-
-__device__ float3 mcTriangleNormal(mcTriangle& tri)
-{
-    return normalize(cross(tri.corners[1] - tri.corners[0], tri.corners[2] - tri.corners[0]));
-}
-
-template<int i>
-__device__ float3 mcTrace(mcRay& ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount, curandState* state)
-{    
     mcIntersection hit = mcIntersectScene(ray, mats, geometry, triCount);
+
+    float3 emitted = hit.material.emissiveColor;
 
     if((hit.depth == FLT_MAX) || (dot(hit.normal, -ray.direction) < 0.f))
         return make_float3(0.0f, 0.0f, 0.0f);
 
-    float3 mirrored = mcMirror(ray.direction, hit.normal);
-
     float diffuseReflectance = mcBrightness(hit.material.diffuseColor);
     float specularReflectance = mcBrightness(hit.material.specularColor);
     float totalReflectance = diffuseReflectance + specularReflectance;
+
+    float3 mirrored = mcMirror(ray.direction, hit.normal);
+
 
     float3 sample;
     ((curand_uniform(state) * totalReflectance) <= diffuseReflectance)
@@ -238,18 +56,17 @@ __device__ float3 mcTrace(mcRay& ray, mcMaterial* mats, mcTriangle* geometry, si
     float density = (diffuseReflectance / totalReflectance) * mcDensityCosTheta(hit.normal, sample)
                   + (specularReflectance / totalReflectance) * mcDensityCosPowerTheta(mirrored, hit.material.specularExponent, sample);
 
-
+    mcRay reflectedRay = {hit.position, sample};
     float costheta = dot(sample, hit.normal);
 
-    mcRay reflectedRay = {hit.position, sample};
-    float3 reflected = mcPhong(ray.direction, reflectedRay.direction, hit.normal, hit.material)
-            * mcTrace<i-1>(reflectedRay, mats, geometry, triCount, state) * costheta / density;
+    float3 reflected = mcPhong(hit.material, ray.direction, reflectedRay.direction, hit.normal) *
+             mcTrace<RECURSIONS_LEFT-1>(reflectedRay, mats, geometry, triCount, state) * costheta / density;
 
-    return hit.material.emissiveColor + reflected;
+    return reflected + emitted;
 }
 
 template<>
-__device__ float3 mcTrace<0>(mcRay& ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount, curandState* state)
+__device__ float3 mcTrace<0>(mcRay ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount, curandState* state)
 {
     return make_float3(0.f, 0.f, 0.f);
 }
@@ -275,8 +92,7 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
     mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
 
     /* Actual Path Tracing */
-
-    output[idx] = mcTrace<3>(ray, mats, geometry, triCount, &state);
+    output[idx] = mcTrace<4>(ray, mats, geometry, triCount, &state);
 }
 
 /** C(++) Part **/
@@ -285,22 +101,6 @@ mcTriangle*  devTriangles = 0;
 size_t devTriangleCount = 0;
 mcMaterial*  devMaterials = 0;
 mcCameraInfo*   devCamera = 0;
-
-void cudaTest(void)
-{
-    const size_t length = 64;
-    int data[length];
-
-    int* devPtr;
-    cudaMalloc(&devPtr, length * sizeof(int));
-
-    fillWithOne<<<4, 16>>>(devPtr);
-
-    cudaMemcpy(data, devPtr, sizeof(int) * length, cudaMemcpyDeviceToHost);
-
-    for (size_t i = 0u; i < length; i++)
-        std::cout << data[i] << std::endl;
-}
 
 void uploadBuffers(mcMaterial *materials, size_t materialCount, mcTriangle *tris, size_t triCount)
 {
@@ -339,8 +139,6 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderSettings settings, 
     cudaMalloc(&devResults, sizeof(float3) * pixels.size()); CUDA_CHECK
 
     assert(pixels.size() % CUDA_BLOCK_SIZE == 0);
-
-    std::cout << "Tracing....." << pixels.size() << std::endl;
 
     tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devCamera, devTriangleCount, settings, rand() << 16 | rand()); CUDA_CHECK
 
