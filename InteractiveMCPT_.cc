@@ -75,8 +75,9 @@ void InteractiveMCPTPlugin::mousePressed(QMouseEvent *ev){
     mInteractiveDrawing.startBrushStroke();
 }
 
-void InteractiveMCPTPlugin::mouseReleased(QMouseEvent *ev){
-    mInteractiveDrawing.endBrushStroke();
+void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
+	emit log(LOGERR, QString("MousePressed"));
+    mInteractiveDrawing.traceBrush(this, ev->x(), ev->y());
 }
 
 void InteractiveMCPTPlugin::testFocusIn(QEvent* ev){

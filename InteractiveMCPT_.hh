@@ -95,15 +95,17 @@ private slots:
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
     void changeSigma(double sigma);
-    void changeMaxAngleDev(double maxAngleDev);
-    void changeMaxDepthDev(double maxDepthDev);
-    void changeSmoothSigma(double smoothSigma);
-    void smooth();
 
     void changeTone(int percent) {
         mTone = (double)percent / 100.0;
         updateImageWidget();
     }
+
+    void changeMaxAngleDev(double maxAngleDev);
+    void changeMaxDepthDev(double maxDepthDev);
+    void changeSmoothSigma(double smoothSigma);
+    void smooth();
+
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -172,9 +174,16 @@ private slots:
 
    public slots:
       QString version() { return QString("1.0"); }
+
       void updateImageWidget();
       void mousePressed(QMouseEvent* ev);
       void mouseReleased(QMouseEvent* ev);
+
+      void mousePresse(QMouseEvent* ev);
+      void mouseRelease(QMouseEvent* ev);
+      void testMousePressed(QMouseEvent* ev);
+      void testMouseReleased(QMouseEvent* ev);
+
 
 	  void testFocusIn(QEvent* ev);
 	  void testFocusOut(QEvent* ev);
