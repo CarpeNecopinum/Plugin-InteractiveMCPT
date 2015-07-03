@@ -18,6 +18,7 @@ set(USE_CUDA 1)
 if(USE_CUDA)
 openflipper_plugin (
     CFLAGSADD "${CXX11_FLAGS} -g -ffast-math"
+    DIRS "Cuda"
     DEPS CUDA
 )
 else()
@@ -33,4 +34,4 @@ else()
 message("No Cuda! You suck!")
 endif()
 
-add_definitions(-DCUDA_BLOCK_SIZE=128)
+add_definitions(-DCUDA_BLOCK_SIZE=256)

@@ -94,7 +94,6 @@ private slots:
     void changeBrushType(int type);
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
-	void changeBrushDepth(int depth);
     void changeSigma(double sigma);
     void changeMaxAngleDev(double maxAngleDev);
     void changeMaxDepthDev(double maxDepthDev);
@@ -169,13 +168,13 @@ private slots:
    public slots:
       QString version() { return QString("1.0"); }
       void updateImageWidget();
-      void testMousePressed(QMouseEvent* ev);
-	  void testMouseReleased(QMouseEvent* ev);
+      void mousePressed(QMouseEvent* ev);
+      void mouseReleased(QMouseEvent* ev);
 
 	  void testFocusIn(QEvent* ev);
 	  void testFocusOut(QEvent* ev);
 
-	  void testMouseMove(QMouseEvent* ev);
+      void mouseMove(QMouseEvent* ev);
 
 public:
 
@@ -188,8 +187,7 @@ public:
 	}
 
 	struct RenderJob
-	{
-		RenderSettings settings;
+    {
         std::vector<QueuedPixel> pixels;
 	};
 

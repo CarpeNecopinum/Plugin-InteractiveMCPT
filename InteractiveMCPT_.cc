@@ -40,10 +40,6 @@ void InteractiveMCPTPlugin::changeBrushSize(int size){
     mInteractiveDrawing.updateSigma();
 }
 
-void InteractiveMCPTPlugin::changeBrushDepth(int depth){
-    mInteractiveDrawing.getBrush().setDepth(depth);
-}
-
 void InteractiveMCPTPlugin::changeSigma(double sigma){
     mInteractiveDrawing.setSigma(sigma);
     mInteractiveDrawing.updateSigma();
@@ -65,13 +61,12 @@ void InteractiveMCPTPlugin::smooth(){
     mSmoother.smooth(this, mAccumulatedColor, mSamples);
 }
 
-void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
-	emit log(LOGERR, QString("MousePressed"));
-    mInteractiveDrawing.traceBrush(this, ev->x(), ev->y());
+void InteractiveMCPTPlugin::mousePressed(QMouseEvent *ev){
+    mInteractiveDrawing.startBrushStroke();
 }
 
-void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
-	emit log(LOGERR, QString("Mouse Released!"));
+void InteractiveMCPTPlugin::mouseReleased(QMouseEvent *ev){
+    mInteractiveDrawing.endBrushStroke();
 }
 
 void InteractiveMCPTPlugin::testFocusIn(QEvent* ev){
@@ -82,8 +77,8 @@ void InteractiveMCPTPlugin::testFocusOut(QEvent* ev){
 	emit log(LOGERR, QString("Focus Out!"));
 }
 
-void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
-    emit log(LOGERR, QString::number(mInteractiveDrawing.getBrush().getSize()));
+void InteractiveMCPTPlugin::mouseMove(QMouseEvent* ev){
+    mInteractiveDrawing.updateBrushStroke(this, ev);
 }
 
 void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
@@ -226,10 +221,10 @@ void InteractiveMCPTPlugin::initializePlugin()
 	imageLabel_->setContextMenuPolicy(Qt::CustomContextMenu);
 	
 	connect(imageLabel_,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(showContextMenu(QPoint)));
-	connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(testMousePressed(QMouseEvent*)));
-	connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(testMouseReleased(QMouseEvent*)));
-	connect(imageLabel_, SIGNAL(mouseMoved(QMouseEvent*)), this, SLOT(testMouseMove(QMouseEvent*)));
-	connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
+    connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(mousePresse(QMouseEvent*)));
+    connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(mouseRelease(QMouseEvent*)));
+    connect(imageLabel_, SIGNAL(mouseMoved(QMouseEvent*)), this, SLOT(mouseMove(QMouseEvent*)));
+    connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
 	connect(imageLabel_, SIGNAL(mouseLeaved(QEvent*)), this, SLOT(testFocusOut(QEvent*)));
 
 	layout->addWidget(imageLabel_);
@@ -285,7 +280,7 @@ void InteractiveMCPTPlugin::openWindow() {
 void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 {
 #ifdef HAS_CUDA
-    cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
+    cudaTracePixels(job.pixels, mAccumulatedColor, mSamples, image_.width());
 
     std::vector<QueuedPixel>::iterator end = job.pixels.end();
     for (std::vector<QueuedPixel>::iterator it = job.pixels.begin(); it != end; ++it)
@@ -294,7 +289,7 @@ void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]--;
     }
-    updateImageWidget();
+    //updateImageWidget();
 #else
     std::cerr << "You don't have compiled with CUDA you scrub!" << std::endl;
     std::exit(-1);
@@ -365,10 +360,11 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
     {
         size_t count = job.pixels.size();
 
-        QueuedPixel p = { -1 , -1, 1 };
+        QueuedPixel p = { -1 , -1 , 0};
         while (job.pixels.size() % CUDA_BLOCK_SIZE != 0) job.pixels.push_back(p);
 
-        cudaRunJob(job);
+        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRunJob, job));
+        if (!updateTimer_.isActive()) updateTimer_.start();
     }
     else
     {
@@ -381,8 +377,6 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
 void InteractiveMCPTPlugin::globalRender()
 {
     RenderJob job;
-	job.settings = mSettings;
-
     const int imageWidth  = image_.width();
     const int imageHeight = image_.height();
     for (int y = 0; y < imageHeight; ++y)
@@ -399,7 +393,7 @@ void InteractiveMCPTPlugin::globalRender()
                 job.pixels.clear();
             }
 
-            QueuedPixel point = {x,y, job.settings.samplesPerPixel};
+            QueuedPixel point = {x,y, mSettings.samplesPerPixel};
             job.pixels.push_back(point);
         }
     }
@@ -448,9 +442,11 @@ void InteractiveMCPTPlugin::updateImageWidget() {
             color.minimize(Vec3d(1.0, 1.0, 1.0));
 
             uint8_t left = mQueuedSamples[index];
-            if (left > 0 && left <= sizeof(markerColors))
+
+            if (left > 0)
             {
-                color = 0.5 * color + 0.5 * markerColors[left - 1];
+                double alpha = ((double(left) / 10.0));
+                color = (1.0 - alpha) * color + alpha * Vec3d(0.0, 1.0, 0.0);
             }
 
             image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());
@@ -518,9 +514,10 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     double totalReflectance = diffuseReflectance + specularReflectance;
 
     Vec3d sample;
+    double exponent = (double)hit.material.shininess() / 99.0 * 4096.0;
     ((Sampling::random() * totalReflectance) <= diffuseReflectance)
         ? sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front()
-        : sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, hit.material.shininess()).front();
+        : sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, exponent).front();
     double density = (diffuseReflectance / totalReflectance) * Sampling::densityCosTheta(hit.normal, sample)
                   + (specularReflectance / totalReflectance) * Sampling::densityCosPowerTheta(mirrored.direction, hit.material.shininess(), sample);
 
@@ -531,6 +528,7 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
 
     Color reflected = BRDF::phongBRDF(hit.material, _ray.direction, reflectedRay.direction, hit.normal)
                       * trace(reflectedRay, _recursions + 1) * costheta / density;
+
     return (emitted + reflected);
 }
 

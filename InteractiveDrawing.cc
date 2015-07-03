@@ -2,9 +2,21 @@
 
 #include "InteractiveMCPT_.hh"
 #include "ImageViewer.hh"
+#include <QMouseEvent>
 
 void InteractiveDrawing::update(InteractiveMCPTPlugin* plugin, ImageViewer* imageViewer){
 	
+}
+
+void InteractiveDrawing::startBrushStroke(){
+    _brushStroke = true;
+    _brushStrokePixels.clear();
+}
+
+void InteractiveDrawing::endBrushStroke(){
+    _brushStroke = false;
+    // Send in the jobs here:
+    // for each pixel inside strokePixel array, check for dups, create jobs.
 }
 
 void InteractiveDrawing::switchBrush(int type){
@@ -19,11 +31,14 @@ void InteractiveDrawing::setSigma(double sigma) {
     _sigma = sigma;
 }
 
+void InteractiveDrawing::updateBrushStroke(InteractiveMCPTPlugin *plugin, QMouseEvent* ev){
+    traceBrush(plugin, ev->pos().x(), ev->pos().y());
+}
+
 void InteractiveDrawing::traceBrush(InteractiveMCPTPlugin* plugin, int posX, int posY){
     if(_activeBrush == NONE)
         return;
     InteractiveMCPTPlugin::RenderJob renderJob;
-    renderJob.settings = plugin->getSettings();
     int brushSize = _brush.getSize();
 
     const int imageWidth = plugin->getImageViewer()->getImage()->width();
@@ -44,7 +59,7 @@ void InteractiveDrawing::traceBrush(InteractiveMCPTPlugin* plugin, int posX, int
             currY = posY + offY;
 
             if (currX < imageWidth && currY < imageHeight && currX >= 0 && currY >= 0){
-                int samples = renderJob.settings.samplesPerPixel;
+                int samples = plugin->getSettings().samplesPerPixel;
                 if(_activeBrush == GAUSSED_CIRCLE_BRUSH)
                     samples = (int) (gaussDistribution(offX, offY) / gaussScaling * samples);
                 QueuedPixel pixel = { currX, currY, samples};
