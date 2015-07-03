@@ -49,6 +49,22 @@ void InteractiveMCPTPlugin::changeSigma(double sigma){
     mInteractiveDrawing.updateSigma();
 }
 
+void InteractiveMCPTPlugin::changeMaxAngleDev(double maxAngleDev){
+    mSmoother.setMaxAngleDeviation(maxAngleDev);
+}
+
+void InteractiveMCPTPlugin::changeMaxDepthDev(double maxDepthDev){
+    mSmoother.setMaxDepthDeviation(maxDepthDev);
+}
+
+void InteractiveMCPTPlugin::changeSmoothSigma(double smoothSigma){
+    mSmoother.setSigma(smoothSigma);
+}
+
+void InteractiveMCPTPlugin::smooth(){
+    mSmoother.smooth(this, mAccumulatedColor, mSamples);
+}
+
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
 	emit log(LOGERR, QString("MousePressed"));
     mInteractiveDrawing.traceBrush(this, ev->x(), ev->y());
@@ -87,6 +103,41 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
     QPushButton* globalRenderButton = new QPushButton("FullImage MCPT",parent);
     connect(globalRenderButton, SIGNAL(clicked()), this, SLOT(globalRender()));
     layout->addWidget(globalRenderButton, currentRow++, 0, 1, 2);
+
+    // Smoothing button
+    QPushButton* smoothingButton = new QPushButton("Smooth image",parent);
+    connect(smoothingButton, SIGNAL(clicked()), this, SLOT(smooth()));
+    layout->addWidget(smoothingButton, currentRow++, 0, 1, 2);
+
+    //Smoothing Max Angle Devation
+    QDoubleSpinBox* seMaxAngleDev = new QDoubleSpinBox(parent);
+    seMaxAngleDev->setMaximum(1.57);
+    seMaxAngleDev->setMinimum(0.0);
+    seMaxAngleDev->setSingleStep(0.01);
+    layout->addWidget(new QLabel("Maximum Angle \nDeviation in Rad", parent), currentRow, 0);
+    layout->addWidget(seMaxAngleDev, currentRow++, 1);
+    connect(seMaxAngleDev, SIGNAL(valueChanged(double)), this, SLOT(changeMaxAngleDev(double)));
+    seMaxAngleDev->setValue(0.52);
+
+    //Smoothing Max Depth Deviation
+    QDoubleSpinBox* seMaxDepthDev = new QDoubleSpinBox(parent);
+    seMaxDepthDev->setMaximum(1.0);
+    seMaxDepthDev->setMinimum(0.0);
+    seMaxDepthDev->setSingleStep(0.01);
+    layout->addWidget(new QLabel("Relative Maximum\nDepth Deviation", parent), currentRow, 0);
+    layout->addWidget(seMaxDepthDev, currentRow++, 1);
+    connect(seMaxDepthDev, SIGNAL(valueChanged(double)), this, SLOT(changeMaxAngleDev(double)));
+    seMaxDepthDev->setValue(0.1);
+
+    //Smoothing Sigma
+    QDoubleSpinBox* seSmoothSigma = new QDoubleSpinBox(parent);
+    seSmoothSigma->setMaximum(100.0);
+    seSmoothSigma->setMinimum(0.1);
+    seSmoothSigma->setSingleStep(0.1);
+    layout->addWidget(new QLabel("Sigma for \nGaussian Smoothing", parent), currentRow, 0);
+    layout->addWidget(seSmoothSigma, currentRow++, 1);
+    connect(seSmoothSigma, SIGNAL(valueChanged(double)), this, SLOT(changeSmoothSigma(double)));
+    seSmoothSigma->setValue(10.00);
 
 	//Brush GUI
     QComboBox* brushComboBox = new QComboBox(parent);
@@ -226,6 +277,8 @@ void InteractiveMCPTPlugin::openWindow() {
     uploadCameraInfo(mCam);
 #endif
 
+    mSmoother.init(this);
+
     imageWindow->show();
 }
 
@@ -312,7 +365,7 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
     {
         size_t count = job.pixels.size();
 
-        QueuedPixel p = { -1 , -1 };
+        QueuedPixel p = { -1 , -1, 1 };
         while (job.pixels.size() % CUDA_BLOCK_SIZE != 0) job.pixels.push_back(p);
 
         cudaRunJob(job);
@@ -491,7 +544,7 @@ bool InteractiveMCPTPlugin::intersect(BaseObjectData&      _object,
 		Vec3d&               _normal,
 		double&              _t )
 {
-	_t = FLT_MAX;
+    _t = FLT_MAX;
 
 	Vec3d  ip;
 	double t;
@@ -535,7 +588,7 @@ bool InteractiveMCPTPlugin::intersect(BaseObjectData&      _object,
 
 	}
 
-	return (_t != FLT_MAX);
+    return (_t != FLT_MAX);
 }
 
 /** \brief Compute a reflection ray

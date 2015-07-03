@@ -43,6 +43,6 @@ public:
 private:
     BRUSHES _activeBrush = NONE;
 	Brush _brush;
-    double _sigma, _doubleGaussSigmaSquared;
+    double _sigma = 0.75, _doubleGaussSigmaSquared = _brush.getSize() * _sigma * _brush.getSize() * _sigma / 2.0;
 
 };

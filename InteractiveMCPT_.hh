@@ -19,11 +19,9 @@
 #endif
 
 #include "InfoStructs.hh"
+#include "Smoothing.hh"
 
 class ImageViewer;
-
-typedef ACG::Vec3d Vec3d;
-
 
 struct Face
 {
@@ -87,7 +85,6 @@ private slots:
 	void openWindow();
     void threadFinished();
     void canceledJob(QString /*_jobId*/ );
-    void updateImageWidget();
     void showContextMenu(QPoint _point);
     void saveImage();
 
@@ -99,6 +96,10 @@ private slots:
 	void changeBrushSize(int size);
 	void changeBrushDepth(int depth);
     void changeSigma(double sigma);
+    void changeMaxAngleDev(double maxAngleDev);
+    void changeMaxDepthDev(double maxDepthDev);
+    void changeSmoothSigma(double smoothSigma);
+    void smooth();
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -167,6 +168,7 @@ private slots:
 
    public slots:
       QString version() { return QString("1.0"); }
+      void updateImageWidget();
       void testMousePressed(QMouseEvent* ev);
 	  void testMouseReleased(QMouseEvent* ev);
 
@@ -194,6 +196,8 @@ public:
     void queueJob(RenderJob job);
     void cudaRunJob(RenderJob job);
 
+    CameraInfo& getCam(){return mCam;}
+
 protected:
       CameraInfo mCam;
 
@@ -204,7 +208,9 @@ protected:
 
       RenderSettings mSettings;
 
+      Smoother mSmoother;
 
+public:
       struct Intersection
       {
           Vec3d position;
@@ -213,6 +219,7 @@ protected:
           Material material;
       };
       Intersection intersectScene(const Ray &_ray);
+protected:
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
 
@@ -233,6 +240,8 @@ private:
     bool cancel_;
 
     void clearImage();
+
+    QImage* getImage();
 
     void tracePixel(size_t x, size_t y);
 
