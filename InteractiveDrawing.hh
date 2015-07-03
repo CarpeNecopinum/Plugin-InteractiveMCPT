@@ -10,7 +10,7 @@ class InteractiveMCPTPlugin;
 
 class Brush{
 public:
-	inline const int getSize(){ return _size; }
+    inline int getSize() const { return _size; }
 	inline void setSize(int size){ _size = size; }
 
 private:

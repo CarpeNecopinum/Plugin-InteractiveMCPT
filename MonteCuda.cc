@@ -40,7 +40,7 @@ void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::Obje
         mcMaterial mat = make_material(
                     material.diffuseColor(),
                     material.specularColor(),
-                    material.shininess(),
+                    double(material.shininess()) * 10.0,
                     float(material.reflectance()) * ACG::Vec4f(1.0, 1.0, 1.0, 1.0)
                 );
         materials.push_back(mat);

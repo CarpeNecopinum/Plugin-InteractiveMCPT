@@ -227,7 +227,7 @@ void InteractiveMCPTPlugin::openWindow() {
 void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 {
 #ifdef HAS_CUDA
-    cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
+    cudaTracePixels(job.pixels, mAccumulatedColor, mSamples, image_.width());
 
     std::vector<QueuedPixel>::iterator end = job.pixels.end();
     for (std::vector<QueuedPixel>::iterator it = job.pixels.begin(); it != end; ++it)
@@ -236,7 +236,7 @@ void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]--;
     }
-    updateImageWidget();
+    //updateImageWidget();
 #else
     std::cerr << "You don't have compiled with CUDA you scrub!" << std::endl;
     std::exit(-1);
@@ -307,10 +307,11 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
     {
         size_t count = job.pixels.size();
 
-        QueuedPixel p = { -1 , -1 };
+        QueuedPixel p = { -1 , -1 , 0};
         while (job.pixels.size() % CUDA_BLOCK_SIZE != 0) job.pixels.push_back(p);
 
-        cudaRunJob(job);
+        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRunJob, job));
+        if (!updateTimer_.isActive()) updateTimer_.start();
     }
     else
     {
@@ -323,8 +324,6 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
 void InteractiveMCPTPlugin::globalRender()
 {
     RenderJob job;
-	job.settings = mSettings;
-
     const int imageWidth  = image_.width();
     const int imageHeight = image_.height();
     for (int y = 0; y < imageHeight; ++y)
@@ -341,7 +340,7 @@ void InteractiveMCPTPlugin::globalRender()
                 job.pixels.clear();
             }
 
-            QueuedPixel point = {x,y, job.settings.samplesPerPixel};
+            QueuedPixel point = {x,y, mSettings.samplesPerPixel};
             job.pixels.push_back(point);
         }
     }
@@ -462,9 +461,10 @@ Color InteractiveMCPTPlugin::trace(const Ray& _ray, unsigned int _recursions) {
     double totalReflectance = diffuseReflectance + specularReflectance;
 
     Vec3d sample;
+    double exponent = (double)hit.material.shininess() / 99.0 * 4096.0;
     ((Sampling::random() * totalReflectance) <= diffuseReflectance)
         ? sample = Sampling::randomDirectionsCosTheta(1, hit.normal).front()
-        : sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, hit.material.shininess()).front();
+        : sample = Sampling::randomDirectionCosPowerTheta(1, mirrored.direction, exponent).front();
     double density = (diffuseReflectance / totalReflectance) * Sampling::densityCosTheta(hit.normal, sample)
                   + (specularReflectance / totalReflectance) * Sampling::densityCosPowerTheta(mirrored.direction, hit.material.shininess(), sample);
 

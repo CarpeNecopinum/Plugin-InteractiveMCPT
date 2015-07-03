@@ -74,25 +74,33 @@ __device__ float3 mcTrace<0>(mcRay ray, mcMaterial* mats, mcTriangle* geometry, 
 
 __device__ float cudaRandomSymmetric(curandState* state) { return curand_uniform(state) * 2.f - 1.f; }
 
-__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* geometry, mcCameraInfo* cam, size_t triCount, RenderSettings settings, uint32_t seed)
+__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* geometry, mcCameraInfo* cam, size_t triCount, uint32_t seed)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    QueuedPixel& coord = pixels[idx];
+    QueuedPixel& pixel = pixels[idx];
 
-    if (coord.x == -1) return;
+    if (pixel.x == -1) return;
 
     curandState state;
     curand_init ( seed, idx, 0, &state );
 
-    float x = float(coord.x) + .5f * cudaRandomSymmetric(&state);
-    float y = float(coord.y) + .5f * cudaRandomSymmetric(&state);
+    float3 color = make_float3(0.f, 0.f, 0.f);
 
-    /* Ray Setup */
-    float3 current_point = cam->image_plane_start + cam->x_dir * x - cam->y_dir * y;
-    mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
+    const int samples = min(pixel.samples, 10);
+    pixel.samples -= samples;
+    for (int i = 0; i < samples; i++)
+    {
+        float x = float(pixel.x) + .5f * cudaRandomSymmetric(&state);
+        float y = float(pixel.y) + .5f * cudaRandomSymmetric(&state);
 
-    /* Actual Path Tracing */
-    output[idx] = mcTrace<4>(ray, mats, geometry, triCount, &state);
+        /* Ray Setup */
+        float3 current_point = cam->image_plane_start + cam->x_dir * x - cam->y_dir * y;
+        mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
+
+        /* Actual Path Tracing */
+        color += mcTrace<4>(ray, mats, geometry, triCount, &state);
+    }
+    output[idx] = color;
 }
 
 /** C(++) Part **/
@@ -129,7 +137,7 @@ void uploadCameraInfo(const CameraInfo& cam)
 }
 
 
-void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderSettings settings, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth)
+void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth)
 {
     QueuedPixel* devPixels;
     cudaMalloc(&devPixels, sizeof(QueuedPixel) * pixels.size()); CUDA_CHECK
@@ -139,22 +147,33 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderSettings settings, 
     cudaMalloc(&devResults, sizeof(float3) * pixels.size()); CUDA_CHECK
 
     assert(pixels.size() % CUDA_BLOCK_SIZE == 0);
-
-    tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devCamera, devTriangleCount, settings, rand() << 16 | rand()); CUDA_CHECK
-
     float3* hostResults = new float3[pixels.size()];
-    cudaMemcpy(hostResults, devResults, sizeof(float3) * pixels.size(), cudaMemcpyDeviceToHost); CUDA_CHECK
+
+    bool done = false;
+    while (!done)
+    {
+        done = true;
+
+        tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devCamera, devTriangleCount, rand() << 16 | rand()); CUDA_CHECK
+
+        cudaMemcpy(hostResults, devResults, sizeof(float3) * pixels.size(), cudaMemcpyDeviceToHost); CUDA_CHECK
+
+
+        for (size_t i = 0; i < pixels.size(); ++i)
+        {
+            QueuedPixel& pixel = pixels[i];
+            size_t index = pixel.x + pixel.y * imageWidth;
+            colorMap[index] += toACG3(hostResults[i]);
+
+            const int samples = std::min(pixel.samples, 10);
+            pixel.samples -= samples;
+            sampleCounter[index] += samples;
+            if (pixel.samples) done = false;
+        }
+    }
 
     cudaFree(devPixels); CUDA_CHECK
     cudaFree(devResults); CUDA_CHECK
-
-    for (size_t i = 0; i < pixels.size(); ++i)
-    {
-        QueuedPixel& pixel = pixels[i];
-        size_t index = pixel.x + pixel.y * imageWidth;
-        colorMap[index] += toACG3(hostResults[i]);
-        sampleCounter[index]++;
-    }
 
     delete[] hostResults;
 }

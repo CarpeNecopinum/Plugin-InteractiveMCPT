@@ -22,5 +22,5 @@ __device__ float3 mcPhong(const mcMaterial& material, const float3& incoming, co
     float cosPhi = dot(outgoing, reflected);
     float cosTheta = dot(outgoing, normal);
 
-    return (material.specularColor * pow(cosPhi, exponent) / cosTheta) + material.diffuseColor;
+    return pow(exponent, 0.33f) * (material.specularColor * pow(cosPhi, exponent) / cosTheta) + material.diffuseColor;
 }

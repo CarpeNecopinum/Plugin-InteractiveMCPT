@@ -12,7 +12,7 @@ namespace BRDF {
     Color phongSpecular(const ACG::Vec3d &incoming, const ACG::Vec3d &outgoing, const ACG::Vec3d &normal, const Material &mat)
     {
         ACG::Vec3d reflected = reflect(incoming, normal);
-        double exponent = mat.shininess();
+        double exponent = (double)mat.shininess() / 99.0 * 4096.0;
         double cosPhi = (outgoing | reflected);
         double cosTheta = (outgoing | normal);
 

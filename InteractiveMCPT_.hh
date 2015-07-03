@@ -185,8 +185,7 @@ public:
 	}
 
 	struct RenderJob
-	{
-		RenderSettings settings;
+    {
         std::vector<QueuedPixel> pixels;
 	};
 
