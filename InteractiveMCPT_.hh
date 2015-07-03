@@ -98,6 +98,7 @@ private slots:
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
 	void changeBrushDepth(int depth);
+    void changeSigma(double sigma);
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -187,7 +188,7 @@ public:
 	struct RenderJob
 	{
 		RenderSettings settings;
-		std::vector<Point> pixels;
+        std::vector<QueuedPixel> pixels;
 	};
 
     void queueJob(RenderJob job);

@@ -57,4 +57,4 @@ struct mcRay
 void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::ObjectIterator end);
 void uploadBuffers(mcMaterial* materials, size_t materialCount, mcTriangle* tris, size_t triCount);
 void uploadCameraInfo(const CameraInfo& cam);
-void cudaTracePixels(std::vector<Point> &pixels, RenderSettings settings, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth);
+void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderSettings settings, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth);

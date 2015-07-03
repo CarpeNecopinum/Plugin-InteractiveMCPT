@@ -257,10 +257,10 @@ __device__ float3 mcTrace<0>(mcRay& ray, mcMaterial* mats, mcTriangle* geometry,
 
 __device__ float cudaRandomSymmetric(curandState* state) { return curand_uniform(state) * 2.f - 1.f; }
 
-__global__ void tracePixels(Point* pixels, float3* output, mcMaterial* mats, mcTriangle* geometry, mcCameraInfo* cam, size_t triCount, RenderSettings settings, uint32_t seed)
+__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* geometry, mcCameraInfo* cam, size_t triCount, RenderSettings settings, uint32_t seed)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    Point& coord = pixels[idx];
+    QueuedPixel& coord = pixels[idx];
 
     if (coord.x == -1) return;
 
@@ -329,11 +329,11 @@ void uploadCameraInfo(const CameraInfo& cam)
 }
 
 
-void cudaTracePixels(std::vector<Point> &pixels, RenderSettings settings, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth)
+void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderSettings settings, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth)
 {
-    Point* devPixels;
-    cudaMalloc(&devPixels, sizeof(Point) * pixels.size()); CUDA_CHECK
-    cudaMemcpy(devPixels, pixels.data(), sizeof(Point) * pixels.size(), cudaMemcpyHostToDevice); CUDA_CHECK
+    QueuedPixel* devPixels;
+    cudaMalloc(&devPixels, sizeof(QueuedPixel) * pixels.size()); CUDA_CHECK
+    cudaMemcpy(devPixels, pixels.data(), sizeof(QueuedPixel) * pixels.size(), cudaMemcpyHostToDevice); CUDA_CHECK
 
     float3* devResults;
     cudaMalloc(&devResults, sizeof(float3) * pixels.size()); CUDA_CHECK
@@ -352,7 +352,7 @@ void cudaTracePixels(std::vector<Point> &pixels, RenderSettings settings, ACG::V
 
     for (size_t i = 0; i < pixels.size(); ++i)
     {
-        Point& pixel = pixels[i];
+        QueuedPixel& pixel = pixels[i];
         size_t index = pixel.x + pixel.y * imageWidth;
         colorMap[index] += toACG3(hostResults[i]);
         sampleCounter[index]++;

@@ -20,23 +20,29 @@
 
 #define EPS (1e-6)
 
-InteractiveDrawing mInteractivDrawing;
+InteractiveDrawing mInteractiveDrawing;
 
 void InteractiveMCPTPlugin::changeBrushType(int type){
-    mInteractivDrawing.switchBrush(type);
+    mInteractiveDrawing.switchBrush(type);
 }
 
 void InteractiveMCPTPlugin::changeBrushSize(int size){
-	mInteractivDrawing.getBrush().setSize(size);
+    mInteractiveDrawing.getBrush().setSize(size);
+    mInteractiveDrawing.updateSigma();
 }
 
 void InteractiveMCPTPlugin::changeBrushDepth(int depth){
-	mInteractivDrawing.getBrush().setDepth(depth);
+    mInteractiveDrawing.getBrush().setDepth(depth);
+}
+
+void InteractiveMCPTPlugin::changeSigma(double sigma){
+    mInteractiveDrawing.setSigma(sigma);
+    mInteractiveDrawing.updateSigma();
 }
 
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
 	emit log(LOGERR, QString("MousePressed"));
-    mInteractivDrawing.traceBrush(this, ev->x(), ev->y());
+    mInteractiveDrawing.traceBrush(this, ev->x(), ev->y());
 }
 
 void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
@@ -52,7 +58,7 @@ void InteractiveMCPTPlugin::testFocusOut(QEvent* ev){
 }
 
 void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
-	emit log(LOGERR, QString::number(mInteractivDrawing.getBrush().getSize()));
+    emit log(LOGERR, QString::number(mInteractiveDrawing.getBrush().getSize()));
 }
 
 void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
@@ -80,7 +86,8 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
     brushComboBox->addItem(QString("Circle Brush"));
     brushComboBox->addItem(QString("Gaussed Cirlce Brush"));
 
-    layout->addWidget(brushComboBox, currentRow++, 0, 1, 2);
+    layout->addWidget(new QLabel("Selected Brush", parent), currentRow, 0);
+    layout->addWidget(brushComboBox, currentRow++, 1);
     connect(brushComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(changeBrushType(int)));
 
 
@@ -100,6 +107,15 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
     layout->addWidget(seBrushSize, currentRow++, 1);
 	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
 
+    //Gauss Sigma
+    QDoubleSpinBox * seSigma = new QDoubleSpinBox(parent);
+    seSigma->setMaximum(2.0);
+    seSigma->setMinimum(0.2);
+    seSigma->setSingleStep(0.01);
+    layout->addWidget(new QLabel("Gauss Sigma in brush sizes", parent), currentRow, 0);
+    layout->addWidget(seSigma, currentRow++, 1);
+    connect(seSigma, SIGNAL(valueChanged(double)), this, SLOT(changeSigma(double)));
+    seSigma->setValue(0.75);
 
     // dummy stretch label
     layout->addWidget(new QLabel("", parent), currentRow, 0, 1, 2);
@@ -206,10 +222,10 @@ void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 #ifdef HAS_CUDA
     cudaTracePixels(job.pixels, job.settings, mAccumulatedColor, mSamples, image_.width());
 
-    std::vector<Point>::iterator end = job.pixels.end();
-    for (std::vector<Point>::iterator it = job.pixels.begin(); it != end; ++it)
+    std::vector<QueuedPixel>::iterator end = job.pixels.end();
+    for (std::vector<QueuedPixel>::iterator it = job.pixels.begin(); it != end; ++it)
     {
-        Point& point = *it;
+        QueuedPixel& point = *it;
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]--;
     }
@@ -222,15 +238,15 @@ void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 
 void InteractiveMCPTPlugin::runJob(RenderJob job)
 {
-    std::vector<Point>::iterator end = job.pixels.end();
-    for (std::vector<Point>::iterator it = job.pixels.begin(); it != end; ++it)
+    std::vector<QueuedPixel>::iterator end = job.pixels.end();
+    for (std::vector<QueuedPixel>::iterator it = job.pixels.begin(); it != end; ++it)
     {
-        Point& point = *it;
+        QueuedPixel& queuedPixel = *it;
 
-        for (int i = 0; i < job.settings.samplesPerPixel; i++)
-            tracePixel(point.x, point.y);
+        for (int i = 0; i < queuedPixel.samples; i++)
+            tracePixel(queuedPixel.x, queuedPixel.y);
 
-        size_t index = point.y * image_.width() + point.x;
+        size_t index = queuedPixel.y * image_.width() + queuedPixel.x;
         mQueuedSamples[index]--;
     }
 }
@@ -274,7 +290,7 @@ CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
 
 void InteractiveMCPTPlugin::queueJob(RenderJob job)
 {
-    for (Point point : job.pixels)
+    for (QueuedPixel point : job.pixels)
     {
         size_t index = point.y * image_.width() + point.x;
         mQueuedSamples[index]++;
@@ -284,7 +300,7 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
     {
         size_t count = job.pixels.size();
 
-        Point p = { -1 , -1 };
+        QueuedPixel p = { -1 , -1 };
         while (job.pixels.size() % CUDA_BLOCK_SIZE != 0) job.pixels.push_back(p);
 
         cudaRunJob(job);
@@ -318,7 +334,7 @@ void InteractiveMCPTPlugin::globalRender()
                 job.pixels.clear();
             }
 
-            Point point = {x,y};
+            QueuedPixel point = {x,y, job.settings.samplesPerPixel};
             job.pixels.push_back(point);
         }
     }
@@ -352,7 +368,7 @@ void InteractiveMCPTPlugin::updateImageWidget() {
     const Vec3d markerColors[] = { {0.0, 1.0, 0.0}, {1.0, 1.0, 0.0}, {1.0, 0.0, 0.0} };
 
 	// InteractivDrawing Update:
-	mInteractivDrawing.update(this, imageLabel_);
+    mInteractiveDrawing.update(this, imageLabel_);
 
     // Generate Image from accumulated buffer and sample counter
     for (int y = 0; y < image_.height(); ++y)

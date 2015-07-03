@@ -20,7 +20,7 @@ struct Ray
   ACG::Vec3d direction;
 };
 
-struct Point
+struct QueuedPixel
 {
-    int x, y;
+    int x, y, samples;
 };

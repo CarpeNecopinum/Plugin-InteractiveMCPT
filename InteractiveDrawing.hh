@@ -30,12 +30,19 @@ public:
 	
     void switchBrush(int type);
 
+    void updateSigma();
+
+    void setSigma(double sigma);
+
     void traceBrush(InteractiveMCPTPlugin* plugin, int posX, int posY);
 
 	void update(InteractiveMCPTPlugin* plugin, ImageViewer* imageViewer);
 
+    double gaussDistribution(int x, int y);
+
 private:
     BRUSHES _activeBrush = NONE;
 	Brush _brush;
+    double _sigma, _doubleGaussSigmaSquared;
 
 };
