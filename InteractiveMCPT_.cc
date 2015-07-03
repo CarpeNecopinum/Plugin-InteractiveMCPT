@@ -21,9 +21,18 @@
 #define EPS (1e-6)
 
 InteractiveDrawing mInteractiveDrawing;
+QDoubleSpinBox * mSeSigma;
+QLabel * mSigmaLabel;
 
 void InteractiveMCPTPlugin::changeBrushType(int type){
     mInteractiveDrawing.switchBrush(type);
+    if(type != 3){
+        mSeSigma->setVisible(false);
+        mSigmaLabel->setVisible(false);
+    }else{
+        mSeSigma->setVisible(true);
+        mSigmaLabel->setVisible(true);
+    }
 }
 
 void InteractiveMCPTPlugin::changeBrushSize(int size){
@@ -101,21 +110,24 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
 
     // Brush Size
 	QSpinBox * seBrushSize = new QSpinBox(parent);
-	seBrushSize->setMaximum(50);
+    seBrushSize->setMaximum(200);
     seBrushSize->setMinimum(1);
     layout->addWidget(new QLabel("Brush Radius", parent), currentRow, 0);
     layout->addWidget(seBrushSize, currentRow++, 1);
 	connect(seBrushSize, SIGNAL(valueChanged(int)), this, SLOT(changeBrushSize(int)));
 
     //Gauss Sigma
-    QDoubleSpinBox * seSigma = new QDoubleSpinBox(parent);
-    seSigma->setMaximum(2.0);
-    seSigma->setMinimum(0.2);
-    seSigma->setSingleStep(0.01);
-    layout->addWidget(new QLabel("Gauss Sigma in brush sizes", parent), currentRow, 0);
-    layout->addWidget(seSigma, currentRow++, 1);
-    connect(seSigma, SIGNAL(valueChanged(double)), this, SLOT(changeSigma(double)));
-    seSigma->setValue(0.75);
+    mSeSigma = new QDoubleSpinBox(parent);
+    mSeSigma->setMaximum(2.0);
+    mSeSigma->setMinimum(0.2);
+    mSeSigma->setSingleStep(0.01);
+    mSigmaLabel = new QLabel("Gauss Sigma in Brush Sizes", parent);
+    layout->addWidget(mSigmaLabel, currentRow, 0);
+    layout->addWidget(mSeSigma, currentRow++, 1);
+    connect(mSeSigma, SIGNAL(valueChanged(double)), this, SLOT(changeSigma(double)));
+    mSeSigma->setValue(0.75);
+    mSeSigma->setVisible(false);
+    mSigmaLabel->setVisible(false);
 
     // dummy stretch label
     layout->addWidget(new QLabel("", parent), currentRow, 0, 1, 2);
