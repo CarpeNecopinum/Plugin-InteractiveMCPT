@@ -22,8 +22,8 @@
 
 InteractiveDrawing mInteractivDrawing;
 
-void InteractiveMCPTPlugin::selectBrushBtnPressed(){
-	mInteractivDrawing.toggleBrush();
+void InteractiveMCPTPlugin::changeBrushType(int type){
+    mInteractivDrawing.switchBrush(type);
 }
 
 void InteractiveMCPTPlugin::changeBrushSize(int size){
@@ -36,7 +36,7 @@ void InteractiveMCPTPlugin::changeBrushDepth(int depth){
 
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
 	emit log(LOGERR, QString("MousePressed"));
-	mInteractivDrawing.testBrush(this, ev->x(), ev->y());
+    mInteractivDrawing.traceBrush(this, ev->x(), ev->y());
 }
 
 void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
@@ -74,13 +74,14 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
     layout->addWidget(globalRenderButton, currentRow++, 0, 1, 2);
 
 	//Brush GUI
-	QPushButton* brushButton = new QPushButton("Brush", parent);
+    QComboBox* brushComboBox = new QComboBox(parent);
+    brushComboBox->addItem(QString("None"));
+    brushComboBox->addItem(QString("Square Brush"));
+    brushComboBox->addItem(QString("Circle Brush"));
+    brushComboBox->addItem(QString("Gaussed Cirlce Brush"));
 
-	brushButton->setCheckable(true);
-	brushButton->setChecked(false);
-	brushButton->setToolTip("'Brush' tool");
-    layout->addWidget(brushButton, currentRow++, 0, 1, 2);
-	connect(brushButton, SIGNAL(clicked()), this, SLOT(selectBrushBtnPressed));
+    layout->addWidget(brushComboBox, currentRow++, 0, 1, 2);
+    connect(brushComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(changeBrushType(int)));
 
 
     // Rays per Pixel spinbox

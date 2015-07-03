@@ -17,25 +17,25 @@ private:
 
 class InteractiveDrawing{
 	
-	enum TOOLS{
-		NONE,
-		BRUSH
+    enum BRUSHES{
+        NONE = 0,
+        SQUARE_BRUSH = 1,
+        CIRCLE_BRUSH = 2,
+        GAUSSED_CIRCLE_BRUSH = 3
 	};
 
 public:
 
 	inline Brush& getBrush(){ return _brush; }
 	
-	void toggleBrush();
+    void switchBrush(int type);
 
-	inline void deselectTool() { _aktivTools = NONE; }
-
-	void testBrush(InteractiveMCPTPlugin* plugin, int posX, int posY);
+    void traceBrush(InteractiveMCPTPlugin* plugin, int posX, int posY);
 
 	void update(InteractiveMCPTPlugin* plugin, ImageViewer* imageViewer);
 
 private:
-	TOOLS _aktivTools = NONE;
+    BRUSHES _activeBrush = NONE;
 	Brush _brush;
 
 };

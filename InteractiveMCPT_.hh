@@ -94,7 +94,7 @@ private slots:
     void globalRender();
     void setCudaActive(int active);
 
-	void selectBrushBtnPressed();
+    void changeBrushType(int type);
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
 	void changeBrushDepth(int depth);
