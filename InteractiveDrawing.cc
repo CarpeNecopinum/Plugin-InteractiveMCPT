@@ -2,9 +2,21 @@
 
 #include "InteractiveMCPT_.hh"
 #include "ImageViewer.hh"
+#include <QMouseEvent>
 
 void InteractiveDrawing::update(InteractiveMCPTPlugin* plugin, ImageViewer* imageViewer){
 	
+}
+
+void InteractiveDrawing::startBrushStroke(){
+    _brushStroke = true;
+    _brushStrokePixels.clear();
+}
+
+void InteractiveDrawing::endBrushStroke(){
+    _brushStroke = false;
+    // Send in the jobs here:
+    // for each pixel inside strokePixel array, check for dups, create jobs.
 }
 
 void InteractiveDrawing::switchBrush(int type){
@@ -17,6 +29,10 @@ void InteractiveDrawing::updateSigma(){
 
 void InteractiveDrawing::setSigma(double sigma) {
     _sigma = sigma;
+}
+
+void InteractiveDrawing::updateBrushStroke(InteractiveMCPTPlugin *plugin, QMouseEvent* ev){
+    traceBrush(plugin, ev->pos().x(), ev->pos().y());
 }
 
 void InteractiveDrawing::traceBrush(InteractiveMCPTPlugin* plugin, int posX, int posY){

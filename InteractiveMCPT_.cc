@@ -31,22 +31,17 @@ void InteractiveMCPTPlugin::changeBrushSize(int size){
     mInteractiveDrawing.updateSigma();
 }
 
-void InteractiveMCPTPlugin::changeBrushDepth(int depth){
-    mInteractiveDrawing.getBrush().setDepth(depth);
-}
-
 void InteractiveMCPTPlugin::changeSigma(double sigma){
     mInteractiveDrawing.setSigma(sigma);
     mInteractiveDrawing.updateSigma();
 }
 
-void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
-	emit log(LOGERR, QString("MousePressed"));
-    mInteractiveDrawing.traceBrush(this, ev->x(), ev->y());
+void InteractiveMCPTPlugin::mousePresse(QMouseEvent *ev){
+    mInteractiveDrawing.startBrushStroke();
 }
 
-void InteractiveMCPTPlugin::testMouseReleased(QMouseEvent *ev){
-	emit log(LOGERR, QString("Mouse Released!"));
+void InteractiveMCPTPlugin::mouseRelease(QMouseEvent *ev){
+    mInteractiveDrawing.endBrushStroke();
 }
 
 void InteractiveMCPTPlugin::testFocusIn(QEvent* ev){
@@ -57,8 +52,8 @@ void InteractiveMCPTPlugin::testFocusOut(QEvent* ev){
 	emit log(LOGERR, QString("Focus Out!"));
 }
 
-void InteractiveMCPTPlugin::testMouseMove(QMouseEvent* ev){
-    emit log(LOGERR, QString::number(mInteractiveDrawing.getBrush().getSize()));
+void InteractiveMCPTPlugin::mouseMove(QMouseEvent* ev){
+    mInteractiveDrawing.updateBrushStroke(this, ev);
 }
 
 void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* parent){
@@ -163,10 +158,10 @@ void InteractiveMCPTPlugin::initializePlugin()
 	imageLabel_->setContextMenuPolicy(Qt::CustomContextMenu);
 	
 	connect(imageLabel_,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(showContextMenu(QPoint)));
-	connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(testMousePressed(QMouseEvent*)));
-	connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(testMouseReleased(QMouseEvent*)));
-	connect(imageLabel_, SIGNAL(mouseMoved(QMouseEvent*)), this, SLOT(testMouseMove(QMouseEvent*)));
-	connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
+    connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(mousePresse(QMouseEvent*)));
+    connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(mouseRelease(QMouseEvent*)));
+    connect(imageLabel_, SIGNAL(mouseMoved(QMouseEvent*)), this, SLOT(mouseMove(QMouseEvent*)));
+    connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
 	connect(imageLabel_, SIGNAL(mouseLeaved(QEvent*)), this, SLOT(testFocusOut(QEvent*)));
 
 	layout->addWidget(imageLabel_);
@@ -383,9 +378,11 @@ void InteractiveMCPTPlugin::updateImageWidget() {
             color.minimize(Vec3d(1.0, 1.0, 1.0));
 
             uint8_t left = mQueuedSamples[index];
-            if (left > 0 && left <= sizeof(markerColors))
+
+            if (left > 0)
             {
-                color = 0.5 * color + 0.5 * markerColors[left - 1];
+                double alpha = ((double(left) / 10.0));
+                color = (1.0 - alpha) * color + alpha * Vec3d(0.0, 1.0, 0.0);
             }
 
             image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());

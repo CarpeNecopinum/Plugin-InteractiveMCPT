@@ -97,7 +97,6 @@ private slots:
     void changeBrushType(int type);
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
-	void changeBrushDepth(int depth);
     void changeSigma(double sigma);
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
@@ -167,13 +166,13 @@ private slots:
 
    public slots:
       QString version() { return QString("1.0"); }
-      void testMousePressed(QMouseEvent* ev);
-	  void testMouseReleased(QMouseEvent* ev);
+      void mousePresse(QMouseEvent* ev);
+      void mouseRelease(QMouseEvent* ev);
 
 	  void testFocusIn(QEvent* ev);
 	  void testFocusOut(QEvent* ev);
 
-	  void testMouseMove(QMouseEvent* ev);
+      void mouseMove(QMouseEvent* ev);
 
 public:
 

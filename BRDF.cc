@@ -27,7 +27,4 @@ namespace BRDF {
     Color phongBRDF(const Material &objectMaterial, const ACG::Vec3d &incoming, const ACG::Vec3d &outgoing, const ACG::Vec3d &normal) {
         return phongSpecular(incoming, outgoing, normal, objectMaterial) + diffuse(objectMaterial);
     }
-
-
-
 }

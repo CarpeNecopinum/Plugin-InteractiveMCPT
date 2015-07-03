@@ -14,6 +14,9 @@ void ImageViewer::mouseReleaseEvent(QMouseEvent* ev){
 }
 
 void ImageViewer::mouseMoveEvent(QMouseEvent* ev){
+    mLastMousePosX = mMousePosX;
+    mLastMousePosY = mMousePosY;
+
 	mMousePosX = ev->pos().x();
 	mMousePosY = ev->pos().y();
 	emit mouseMoved(ev);

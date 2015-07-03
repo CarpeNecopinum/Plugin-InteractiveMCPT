@@ -1,22 +1,26 @@
 #pragma once
 
+#include <QObject>
+#include <InfoStructs.hh>
+
+class QMouseEvent;
 class ImageViewer;
 class InteractiveMCPTPlugin;
+
 
 class Brush{
 public:
 	inline const int getSize(){ return _size; }
 	inline void setSize(int size){ _size = size; }
 
-	inline const int getDepth(){ return _depth; }
-	inline void setDepth(int depth){ _depth = depth; }
 private:
 	int _size = 1;
-	int _depth = 1;
 };
 
-class InteractiveDrawing{
+class InteractiveDrawing : public QObject{
 	
+Q_OBJECT
+
     enum BRUSHES{
         NONE = 0,
         SQUARE_BRUSH = 1,
@@ -25,6 +29,7 @@ class InteractiveDrawing{
 	};
 
 public:
+
 
 	inline Brush& getBrush(){ return _brush; }
 	
@@ -40,9 +45,20 @@ public:
 
     double gaussDistribution(int x, int y);
 
+    void startBrushStroke();
+    void endBrushStroke();
+
+    void updateBrushStroke(InteractiveMCPTPlugin* plugin, QMouseEvent* ev);
+
+    inline bool isPerformingStroke(){return _brushStroke;}
+    inline std::vector<QueuedPixel> &getBrushStrokePixels(){ return _brushStrokePixels;}
+
 private:
     BRUSHES _activeBrush = NONE;
 	Brush _brush;
     double _sigma, _doubleGaussSigmaSquared;
 
+    bool _brushStroke = false;
+
+    std::vector<QueuedPixel> _brushStrokePixels = {};
 };

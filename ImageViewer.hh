@@ -27,8 +27,11 @@ private:
 	bool mIsMouseDown = false;
 	bool mIsFocused = false;
 
-	float mMousePosX = 0.0f;
-	float mMousePosY = 0.0f;
+    int mMousePosX = 0;
+    int mMousePosY = 0;
+
+    int mLastMousePosX = 0;
+    int mLastMousePosY = 0;
 
 	QImage* image_;
 
