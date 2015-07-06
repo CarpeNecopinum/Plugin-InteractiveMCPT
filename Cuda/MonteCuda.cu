@@ -143,21 +143,23 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
     cudaMalloc(&devPixels, sizeof(QueuedPixel) * pixels.size()); CUDA_CHECK
     cudaMemcpy(devPixels, pixels.data(), sizeof(QueuedPixel) * pixels.size(), cudaMemcpyHostToDevice); CUDA_CHECK
 
+    size_t num_passes = 0;
+    for (size_t i = 0; i < pixels.size(); ++i)
+    {
+        num_passes = std::max(size_t(pixels[i].samples + 10 - 1) / 10, num_passes);
+    }
+
     float3* devResults;
     cudaMalloc(&devResults, sizeof(float3) * pixels.size()); CUDA_CHECK
 
     assert(pixels.size() % CUDA_BLOCK_SIZE == 0);
     float3* hostResults = new float3[pixels.size()];
 
-    bool done = false;
-    while (!done)
+    for (int pass = 0; pass < num_passes; ++pass)
     {
-        done = true;
-
         tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devCamera, devTriangleCount, rand() << 16 | rand()); CUDA_CHECK
 
         cudaMemcpy(hostResults, devResults, sizeof(float3) * pixels.size(), cudaMemcpyDeviceToHost); CUDA_CHECK
-
 
         for (size_t i = 0; i < pixels.size(); ++i)
         {
@@ -168,7 +170,6 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
             const int samples = std::min(pixel.samples, 10);
             pixel.samples -= samples;
             sampleCounter[index] += samples;
-            if (pixel.samples) done = false;
         }
     }
 

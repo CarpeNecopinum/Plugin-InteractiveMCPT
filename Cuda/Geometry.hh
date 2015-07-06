@@ -159,3 +159,6 @@ __device__ float3 mcTriangleNormal(mcTriangle tri)
         u.x * v.y - u.y * v.x
     ));
 }
+
+float3 baryCenter(mcTriangle tri) { return (tri.corners[0] + tri.corners[1] + tri.corners[2]) / 3.0f; }
+
