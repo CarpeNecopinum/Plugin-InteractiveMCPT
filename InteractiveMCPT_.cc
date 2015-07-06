@@ -13,6 +13,7 @@
 #include "Sampling.hh"
 #include "BRDF.hh"
 #include <QMouseEvent>
+#include <QSlider>
 
 #include "ImageViewer.hh"
 
@@ -23,6 +24,15 @@
 InteractiveDrawing mInteractiveDrawing;
 QDoubleSpinBox * mSeSigma;
 QLabel * mSigmaLabel;
+
+Vec3d vecPow(const Vec3d& in, double exponent)
+{
+    return Vec3d(
+                std::pow(in[0], exponent),
+                std::pow(in[1], exponent),
+                std::pow(in[2], exponent)
+            );
+}
 
 void InteractiveMCPTPlugin::changeBrushType(int type){
     mInteractiveDrawing.switchBrush(type);
@@ -123,6 +133,14 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
     mSeSigma->setValue(0.75);
     mSeSigma->setVisible(false);
     mSigmaLabel->setVisible(false);
+
+    //"Tone Mapping" slider
+    QSlider* toneSlider = new QSlider(Qt::Horizontal, parent);
+    toneSlider->setMinimum(1); toneSlider->setMaximum(300);
+    toneSlider->setValue(100);
+    layout->addWidget(new QLabel("Brightness", parent), currentRow, 0);
+    layout->addWidget(toneSlider, currentRow++, 1);
+    connect(toneSlider, SIGNAL(valueChanged(int)), this, SLOT(changeTone(int)));
 
     // dummy stretch label
     layout->addWidget(new QLabel("", parent), currentRow, 0, 1, 2);
@@ -385,8 +403,10 @@ void InteractiveMCPTPlugin::updateImageWidget() {
             Vec3d color = mAccumulatedColor[index];
             color /= mSamples[index];
 
+            color *= mTone;
             color.maximize(Vec3d(0.0, 0.0, 0.0));
             color.minimize(Vec3d(1.0, 1.0, 1.0));
+            color = vecPow(color, 1.0 / 2.2);
 
             uint8_t left = mQueuedSamples[index];
 

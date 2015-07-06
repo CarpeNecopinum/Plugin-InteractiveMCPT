@@ -98,6 +98,10 @@ private slots:
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
 	void changeBrushSize(int size);
     void changeSigma(double sigma);
+    void changeTone(int percent) {
+        mTone = (double)percent / 100.0;
+        updateImageWidget();
+    }
 
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
@@ -194,6 +198,7 @@ public:
 
 protected:
       CameraInfo mCam;
+      double mTone = 1.0;
 
       CameraInfo computeCameraInfo() const;
       Vec3d* mAccumulatedColor;
