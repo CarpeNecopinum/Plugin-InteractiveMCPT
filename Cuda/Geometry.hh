@@ -4,6 +4,7 @@
 #include "cutil_math.h"
 #include <curand_kernel.h>
 #include "../MonteCuda.hh"
+#include "KdTree.hh"
 
 struct mcIntersection
 {
@@ -19,9 +20,6 @@ __device__ bool mcBaryTest(float3 point, mcTriangle triangle);
 __device__ mcIntersection mcIntersectTriangle(mcRay ray, mcTriangle triangle);
 __device__ mcIntersection mcIntersectScene(mcRay ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount);
 __device__ float3 mcTriangleNormal(mcTriangle tri);
-
-
-
 
 __device__ float3 mcMirror(const float3& direction, const float3& normal)
 {
@@ -128,9 +126,60 @@ __device__ mcIntersection mcIntersectTriangle(mcRay ray, mcTriangle triangle)
     return result;
 }
 
+__device__ bool mcIntersectAABB(mcRay ray, float3 minCorner, float3 maxCorner)
+{
+    float t1 = (minCorner.x - ray.origin.x) / ray.direction.x;
+    float t2 = (maxCorner.x - ray.origin.x) / ray.direction.x;
+    float t3 = (minCorner.y - ray.origin.y) / ray.direction.y;
+    float t4 = (maxCorner.y - ray.origin.y) / ray.direction.y;
+    float t5 = (minCorner.z - ray.origin.z) / ray.direction.z;
+    float t6 = (maxCorner.z - ray.origin.z) / ray.direction.z;
+
+    float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6));
+    float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6));
+
+    if ((tmax < 0) || (tmin >= tmax)) return false;
+    return true;
+}
+
+template<int LEVEL>
+__device__ mcIntersection mcIntersectKdTree(mcRay ray, mcMaterial* mats, KdTree<LEVEL>* tree)
+{
+    mcIntersection left, right;
+    left.depth = FLT_MAX; right.depth = FLT_MAX;
+
+    if (mcIntersectAABB(ray, tree->bbMin, tree->bbMax))
+    {
+        left = mcIntersectKdTree(ray, mats, &(tree->left));
+        right = mcIntersectKdTree(ray, mats, &(tree->right));
+        if (left.depth > right.depth) left = right;
+    }
+    return left;
+}
+
+template<>
+__device__ mcIntersection mcIntersectKdTree<0>(mcRay ray, mcMaterial* mats, KdTree<0>* tree)
+{
+    mcIntersection result;
+    result.depth = FLT_MAX;
+
+    if (mcIntersectAABB(ray, tree->bbMin, tree->bbMax))
+    {
+        for (size_t i = 0; i < tree->triangleCount; ++i)
+        {
+            mcIntersection next = mcIntersectTriangle(ray, tree->triangles[i]);
+            if (next.depth < result.depth)
+            {
+                result = next;
+                result.material = mats[tree->triangles[i].matIndex];
+            }
+        }
+    }
+    return result;
+}
+
 __device__ mcIntersection mcIntersectScene(mcRay ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount)
 {
-
     mcIntersection result;
     result.depth = FLT_MAX;
 
@@ -160,5 +209,4 @@ __device__ float3 mcTriangleNormal(mcTriangle tri)
     ));
 }
 
-float3 baryCenter(mcTriangle tri) { return (tri.corners[0] + tri.corners[1] + tri.corners[2]) / 3.0f; }
 

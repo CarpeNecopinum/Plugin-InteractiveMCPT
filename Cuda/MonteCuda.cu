@@ -11,7 +11,10 @@
 #include "Sampling.hh"
 #include "BRDF.hh"
 
-#define CUDA_CHECK cudaCheck(__LINE__);
+#include "KdTree.hh"
+
+#define CUDA_CHECK
+//cudaCheck(__LINE__);
 
 
 void cudaCheck(int line)
@@ -30,9 +33,6 @@ __device__ float mcBrightness(const float3& color) {
     return (0.299f * color.x + 0.587f * color.y + 0.114f * color.z);
 }
 
-
-
-template<int RECURSIONS_LEFT>
 __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount, curandState* state)
 {
     mcIntersection hit = mcIntersectScene(ray, mats, geometry, triCount);
@@ -60,21 +60,95 @@ __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* geometry, siz
     float costheta = dot(sample, hit.normal);
 
     float3 reflected = mcPhong(hit.material, ray.direction, reflectedRay.direction, hit.normal) *
-             mcTrace<RECURSIONS_LEFT-1>(reflectedRay, mats, geometry, triCount, state) * costheta / density;
+             mcTrace(reflectedRay, mats, geometry, triCount, state) * costheta / density;
+
+    return reflected + emitted;
+}
+
+
+template<int RECURSIONS_LEFT>
+__device__ float3 mcTrace(mcRay ray, mcMaterial* mats, KdTree<TREE_DEPTH>* tree, curandState* state)
+{
+    mcIntersection hit = mcIntersectKdTree(ray, mats, tree);
+
+
+    float3 emitted = hit.material.emissiveColor;
+
+    if((hit.depth == FLT_MAX) || (dot(hit.normal, -ray.direction) < 0.f))
+        return make_float3(0.0f, 0.0f, 0.0f);
+
+    float diffuseReflectance = mcBrightness(hit.material.diffuseColor);
+    float specularReflectance = mcBrightness(hit.material.specularColor);
+    float totalReflectance = diffuseReflectance + specularReflectance;
+
+    float3 mirrored = mcMirror(ray.direction, hit.normal);
+
+
+    float3 sample;
+    ((curand_uniform(state) * totalReflectance) <= diffuseReflectance)
+        ? sample = mcRandomDirCosTheta(hit.normal, state)
+        : sample = mcRandomDirCosPowerTheta(mirrored, hit.material.specularExponent, state);
+    float density = (diffuseReflectance / totalReflectance) * mcDensityCosTheta(hit.normal, sample)
+                  + (specularReflectance / totalReflectance) * mcDensityCosPowerTheta(mirrored, hit.material.specularExponent, sample);
+
+    mcRay reflectedRay = {hit.position, sample};
+    float costheta = dot(sample, hit.normal);
+
+    float3 reflected = mcPhong(hit.material, ray.direction, reflectedRay.direction, hit.normal) *
+             mcTrace<RECURSIONS_LEFT-1>(reflectedRay, mats, tree, state) * costheta / density;
 
     return reflected + emitted;
 }
 
 template<>
-__device__ float3 mcTrace<0>(mcRay ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount, curandState* state)
+__device__ float3 mcTrace<0>(mcRay ray, mcMaterial* mats, KdTree<TREE_DEPTH>* tree, curandState* state)
 {
     return make_float3(0.f, 0.f, 0.f);
 }
 
+template<int RECURSIONS_LEFT>
+__device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t triCount, curandState* state)
+{
+    mcIntersection hit = mcIntersectScene(ray, mats, tris, triCount);
+
+
+    float3 emitted = hit.material.emissiveColor;
+
+    if((hit.depth == FLT_MAX) || (dot(hit.normal, -ray.direction) < 0.f))
+        return make_float3(0.0f, 0.0f, 0.0f);
+
+    float diffuseReflectance = mcBrightness(hit.material.diffuseColor);
+    float specularReflectance = mcBrightness(hit.material.specularColor);
+    float totalReflectance = diffuseReflectance + specularReflectance;
+
+    float3 mirrored = mcMirror(ray.direction, hit.normal);
+
+
+    float3 sample;
+    ((curand_uniform(state) * totalReflectance) <= diffuseReflectance)
+        ? sample = mcRandomDirCosTheta(hit.normal, state)
+        : sample = mcRandomDirCosPowerTheta(mirrored, hit.material.specularExponent, state);
+    float density = (diffuseReflectance / totalReflectance) * mcDensityCosTheta(hit.normal, sample)
+                  + (specularReflectance / totalReflectance) * mcDensityCosPowerTheta(mirrored, hit.material.specularExponent, sample);
+
+    mcRay reflectedRay = {hit.position, sample};
+    float costheta = dot(sample, hit.normal);
+
+    float3 reflected = mcPhong(hit.material, ray.direction, reflectedRay.direction, hit.normal) *
+             mcTrace<RECURSIONS_LEFT-1>(reflectedRay, mats, tris, triCount, state) * costheta / density;
+
+    return reflected + emitted;
+}
+
+template<>
+__device__ float3 mcTrace<0>(mcRay, mcMaterial*, mcTriangle*, size_t, curandState*)
+{
+    return make_float3(0.f, 0.f, 0.f);
+}
 
 __device__ float cudaRandomSymmetric(curandState* state) { return curand_uniform(state) * 2.f - 1.f; }
 
-__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* geometry, mcCameraInfo* cam, size_t triCount, uint32_t seed)
+__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, KdTree<TREE_DEPTH>* tree, mcCameraInfo* cam, uint32_t seed)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     QueuedPixel& pixel = pixels[idx];
@@ -98,7 +172,35 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
         mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
 
         /* Actual Path Tracing */
-        color += mcTrace<4>(ray, mats, geometry, triCount, &state);
+        color += mcTrace<4>(ray, mats, tree, &state);
+    }
+    output[idx] = color;
+}
+__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    QueuedPixel& pixel = pixels[idx];
+
+    if (pixel.x == -1) return;
+
+    curandState state;
+    curand_init ( seed, idx, 0, &state );
+
+    float3 color = make_float3(0.f, 0.f, 0.f);
+
+    const int samples = min(pixel.samples, 10);
+    pixel.samples -= samples;
+    for (int i = 0; i < samples; i++)
+    {
+        float x = float(pixel.x) + .5f * cudaRandomSymmetric(&state);
+        float y = float(pixel.y) + .5f * cudaRandomSymmetric(&state);
+
+        /* Ray Setup */
+        float3 current_point = cam->image_plane_start + cam->x_dir * x - cam->y_dir * y;
+        mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
+
+        /* Actual Path Tracing */
+        color += mcTrace<4>(ray, mats, tris, triCount, &state);
     }
     output[idx] = color;
 }
@@ -109,6 +211,8 @@ mcTriangle*  devTriangles = 0;
 size_t devTriangleCount = 0;
 mcMaterial*  devMaterials = 0;
 mcCameraInfo*   devCamera = 0;
+
+KdTree<TREE_DEPTH>* devKdTree = 0;
 
 void uploadBuffers(mcMaterial *materials, size_t materialCount, mcTriangle *tris, size_t triCount)
 {
@@ -121,6 +225,19 @@ void uploadBuffers(mcMaterial *materials, size_t materialCount, mcTriangle *tris
     cudaMemcpy(devTriangles, tris, sizeof(mcTriangle) * triCount, cudaMemcpyHostToDevice); CUDA_CHECK
 
     devTriangleCount = triCount;
+}
+
+void uploadKdTree(mcMaterial *materials, size_t materialCount, const std::vector<mcTriangle>& triangles)
+{
+    cudaFree(devKdTree);
+    cudaMalloc(&devKdTree, sizeof(KdTree<TREE_DEPTH>));
+
+    KdTree<TREE_DEPTH> hostTree(triangles);
+    cudaMemcpy(devKdTree, &hostTree, sizeof(KdTree<TREE_DEPTH>), cudaMemcpyHostToDevice);
+
+    cudaFree(devMaterials); CUDA_CHECK
+    cudaMalloc(&devMaterials, sizeof(mcMaterial) * materialCount); CUDA_CHECK
+    cudaMemcpy(devMaterials, materials, sizeof(mcMaterial) * materialCount, cudaMemcpyHostToDevice); CUDA_CHECK
 }
 
 void uploadCameraInfo(const CameraInfo& cam)
@@ -157,7 +274,8 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
 
     for (int pass = 0; pass < num_passes; ++pass)
     {
-        tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devCamera, devTriangleCount, rand() << 16 | rand()); CUDA_CHECK
+        //tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devKdTree, devCamera, rand() << 16 | rand()); CUDA_CHECK
+        tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand()); CUDA_CHECK
 
         cudaMemcpy(hostResults, devResults, sizeof(float3) * pixels.size(), cudaMemcpyDeviceToHost); CUDA_CHECK
 

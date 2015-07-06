@@ -1,5 +1,7 @@
 #pragma once
 
+#define TREE_DEPTH 0
+
 #include <vector_types.h>
 #include <vector>
 #include <algorithm>
@@ -19,9 +21,9 @@ inline float getCoord(const float3 vector, size_t index) {
 template<int AXIS>
 inline bool notRightOf(const mcTriangle& tri, float value)
 {
-    return  (getCoord(tri.corners[0], AXIS) < value)
-         || (getCoord(tri.corners[1], AXIS) < value)
-         || (getCoord(tri.corners[2], AXIS) < value);
+    return  (getCoord(tri.corners[0], AXIS) <= value)
+         || (getCoord(tri.corners[1], AXIS) <= value)
+         || (getCoord(tri.corners[2], AXIS) <= value);
 }
 
 template<int AXIS>
@@ -49,29 +51,44 @@ inline float3 triMax(const mcTriangle& tri)
 }
 
 
+inline float3 baryCenter(const mcTriangle& tri) {
+    return (tri.corners[0] + tri.corners[1] + tri.corners[2]) / 3.0f;
+}
+
 template<int LEVELS_LEFT>
 struct KdTree
 {
+    struct BarycenterCompare {
+        BarycenterCompare(int _axis) : axis(_axis) {}
+        int axis;
+
+        bool operator() (const mcTriangle& a, const mcTriangle& b)
+        {
+            return getCoord(baryCenter(a), axis) < getCoord(baryCenter(b), axis);
+        }
+    };
+
     KdTree() {}
     KdTree(std::vector<mcTriangle> tris)
     {
         if (tris.empty()) return;
 
-        std::sort(tris.begin(), tris.end(),
-                [&](const mcTriangle& a, const mcTriangle& b) {
-                    return getCoord(baryCenter(a), axis) < getCoord(baryCenter(b), axis);
-                });
+        std::sort(tris.begin(), tris.end(), BarycenterCompare(axis));
         float median = getCoord(baryCenter(tris[tris.size() / 2]), axis);
 
-        std::vector leftTris;
-        std::vector rightTris;
+        std::vector<mcTriangle> leftTris;
+        std::vector<mcTriangle> rightTris;
 
-        for (auto tri: tris)
+        for (size_t i = 0; i < tris.size(); ++i)
         {
+            const mcTriangle& tri = tris[i];
             bbMin = fminf(bbMin, triMin(tri));
             bbMax = fmaxf(bbMax, triMax(tri));
             if (notRightOf<axis>(tri, median)) leftTris.push_back(tri);
             if (notLeftOf<axis>(tri, median)) rightTris.push_back(tri);
+
+            if (!notRightOf<axis>(tri, median) && !notLeftOf<axis>(tri, median))
+                std::cout << "Waddafack?!" << std::endl;
         }
 
         left = KdTree<LEVELS_LEFT-1>(leftTris);
@@ -84,6 +101,7 @@ struct KdTree
     static const int axis = LEVELS_LEFT % 3;
 };
 
+template<>
 struct KdTree<0>
 {
     KdTree() {}
@@ -92,8 +110,16 @@ struct KdTree<0>
         triangleCount = tris.size();
         cudaMalloc(&triangles, sizeof(mcTriangle) * triangleCount);
         cudaMemcpy(triangles, tris.data(), triangleCount * sizeof(mcTriangle), cudaMemcpyHostToDevice);
+
+        for (size_t i = 0; i < tris.size(); ++i)
+        {
+            const mcTriangle& tri = tris[i];
+            bbMin = fminf(bbMin, triMin(tri));
+            bbMax = fmaxf(bbMax, triMax(tri));
+        }
     }
 
+    float3 bbMin, bbMax;
     mcTriangle* triangles;
     size_t triangleCount;
-}
+};
