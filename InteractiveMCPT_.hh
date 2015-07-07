@@ -100,6 +100,11 @@ private slots:
     void changeSmoothSigma(double smoothSigma);
     void smooth();
 
+    void changeTone(int percent) {
+        mTone = (double)percent / 100.0;
+        updateImageWidget();
+    }
+
     bool intersectBoundingBox(const Vec3d& bb_min ,
                               const Vec3d& bb_max ,
                               const Ray& _ray);
@@ -198,6 +203,7 @@ public:
 
 protected:
       CameraInfo mCam;
+      double mTone = 1.0;
 
       CameraInfo computeCameraInfo() const;
       Vec3d* mAccumulatedColor;

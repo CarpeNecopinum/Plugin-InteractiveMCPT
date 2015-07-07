@@ -53,6 +53,7 @@ void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::Obje
             triangles.push_back(makeTriangle(*f_it, mesh, materials.size() - 1));
         }
     }
+    //uploadKdTree(materials.data(), materials.size(), triangles);
     uploadBuffers(materials.data(), materials.size(), triangles.data(), triangles.size());
 }
 
