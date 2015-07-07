@@ -1,6 +1,6 @@
 #pragma once
 
-#define TREE_DEPTH 0
+#define TREE_DEPTH 4
 
 #include <vector_types.h>
 #include <vector>
@@ -87,9 +87,11 @@ struct KdTree
             if (notRightOf<axis>(tri, median)) leftTris.push_back(tri);
             if (notLeftOf<axis>(tri, median)) rightTris.push_back(tri);
 
+
             if (!notRightOf<axis>(tri, median) && !notLeftOf<axis>(tri, median))
                 std::cout << "Waddafack?!" << std::endl;
         }
+        std::cout << leftTris.size() << " vs. " << rightTris.size() << std::endl;
 
         left = KdTree<LEVELS_LEFT-1>(leftTris);
         right = KdTree<LEVELS_LEFT-1>(rightTris);
