@@ -33,6 +33,7 @@ __device__ float mcBrightness(const float3& color) {
     return (0.299f * color.x + 0.587f * color.y + 0.114f * color.z);
 }
 
+/*
 __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* geometry, size_t triCount, curandState* state)
 {
     mcIntersection hit = mcIntersectScene(ray, mats, geometry, triCount);
@@ -63,9 +64,9 @@ __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* geometry, siz
              mcTrace(reflectedRay, mats, geometry, triCount, state) * costheta / density;
 
     return reflected + emitted;
-}
+}*/
 
-
+/*
 template<int RECURSIONS_LEFT>
 __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, KdTree<TREE_DEPTH>* tree, curandState* state)
 {
@@ -105,49 +106,54 @@ __device__ float3 mcTrace<0>(mcRay ray, mcMaterial* mats, KdTree<TREE_DEPTH>* tr
 {
     return make_float3(0.f, 0.f, 0.f);
 }
+*/
 
-template<int RECURSIONS_LEFT>
 __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t triCount, curandState* state)
 {
-    mcIntersection hit = mcIntersectScene(ray, mats, tris, triCount);
+    float3 color = make_float3(0.0f, 0.0f, 0.0f);
+    float3 weightLeft = make_float3(1.0f, 1.0f, 1.0f);
 
+    int bounces = 0;
+    while (bounces < 4 && (weightLeft.x > 0.02f || weightLeft.y > 0.01f || weightLeft.z > 0.05f))
+    {
+        mcIntersection hit = mcIntersectScene(ray, mats, tris, triCount);
 
-    float3 emitted = hit.material.emissiveColor;
+        if((hit.depth == FLT_MAX) || (dot(hit.normal, -ray.direction) < 0.f))
+            return color;
 
-    if((hit.depth == FLT_MAX) || (dot(hit.normal, -ray.direction) < 0.f))
-        return make_float3(0.0f, 0.0f, 0.0f);
+        color += weightLeft * hit.material.emissiveColor;
 
-    float diffuseReflectance = mcBrightness(hit.material.diffuseColor);
-    float specularReflectance = mcBrightness(hit.material.specularColor);
-    float totalReflectance = diffuseReflectance + specularReflectance;
+        if (bounces < 3)
+        {
+            float diffuseReflectance = mcBrightness(hit.material.diffuseColor);
+            float specularReflectance = mcBrightness(hit.material.specularColor);
+            float totalReflectance = diffuseReflectance + specularReflectance;
 
-    float3 mirrored = mcMirror(ray.direction, hit.normal);
+            float3 mirrored = mcMirror(ray.direction, hit.normal);
 
+            float3 sample;
+            ((curand_uniform(state) * totalReflectance) <= diffuseReflectance)
+                ? sample = mcRandomDirCosTheta(hit.normal, state)
+                : sample = mcRandomDirCosPowerTheta(mirrored, hit.material.specularExponent, state);
+            float density = (diffuseReflectance / totalReflectance) * mcDensityCosTheta(hit.normal, sample)
+                          + (specularReflectance / totalReflectance) * mcDensityCosPowerTheta(mirrored, hit.material.specularExponent, sample);
 
-    float3 sample;
-    ((curand_uniform(state) * totalReflectance) <= diffuseReflectance)
-        ? sample = mcRandomDirCosTheta(hit.normal, state)
-        : sample = mcRandomDirCosPowerTheta(mirrored, hit.material.specularExponent, state);
-    float density = (diffuseReflectance / totalReflectance) * mcDensityCosTheta(hit.normal, sample)
-                  + (specularReflectance / totalReflectance) * mcDensityCosPowerTheta(mirrored, hit.material.specularExponent, sample);
+            mcRay reflectedRay = {hit.position, sample};
+            float costheta = dot(sample, hit.normal);
 
-    mcRay reflectedRay = {hit.position, sample};
-    float costheta = dot(sample, hit.normal);
+            weightLeft = weightLeft * mcPhong(hit.material, ray.direction, reflectedRay.direction, hit.normal) * costheta / density;
+            ray = reflectedRay;
+        }
+        bounces++;
+    }
 
-    float3 reflected = mcPhong(hit.material, ray.direction, reflectedRay.direction, hit.normal) *
-             mcTrace<RECURSIONS_LEFT-1>(reflectedRay, mats, tris, triCount, state) * costheta / density;
-
-    return reflected + emitted;
+    return color;
 }
 
-template<>
-__device__ float3 mcTrace<0>(mcRay, mcMaterial*, mcTriangle*, size_t, curandState*)
-{
-    return make_float3(0.f, 0.f, 0.f);
-}
 
 __device__ float cudaRandomSymmetric(curandState* state) { return curand_uniform(state) * 2.f - 1.f; }
 
+/*
 __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, KdTree<TREE_DEPTH>* tree, mcCameraInfo* cam, uint32_t seed)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -167,15 +173,16 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
         float x = float(pixel.x) + .5f * cudaRandomSymmetric(&state);
         float y = float(pixel.y) + .5f * cudaRandomSymmetric(&state);
 
-        /* Ray Setup */
+        // Ray Setup
         float3 current_point = cam->image_plane_start + cam->x_dir * x - cam->y_dir * y;
         mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
 
-        /* Actual Path Tracing */
-        color += mcTrace<4>(ray, mats, tree, &state);
+        // Actual Path Tracing
+        color += mcTrace(ray, mats, tree, &state);
     }
     output[idx] = color;
-}
+}*/
+
 __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -200,7 +207,7 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
         mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
 
         /* Actual Path Tracing */
-        color += mcTrace<4>(ray, mats, tris, triCount, &state);
+        color += mcTrace(ray, mats, tris, triCount, &state);
     }
     output[idx] = color;
 }
@@ -228,7 +235,7 @@ void uploadBuffers(mcMaterial *materials, size_t materialCount, mcTriangle *tris
 }
 
 void uploadKdTree(mcMaterial *materials, size_t materialCount, const std::vector<mcTriangle>& triangles)
-{
+{/*
     cudaFree(devKdTree);
     cudaMalloc(&devKdTree, sizeof(KdTree<TREE_DEPTH>));
 
@@ -238,6 +245,7 @@ void uploadKdTree(mcMaterial *materials, size_t materialCount, const std::vector
     cudaFree(devMaterials); CUDA_CHECK
     cudaMalloc(&devMaterials, sizeof(mcMaterial) * materialCount); CUDA_CHECK
     cudaMemcpy(devMaterials, materials, sizeof(mcMaterial) * materialCount, cudaMemcpyHostToDevice); CUDA_CHECK
+*/
 }
 
 void uploadCameraInfo(const CameraInfo& cam)
