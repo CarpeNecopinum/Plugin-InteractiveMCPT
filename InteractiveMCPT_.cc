@@ -240,8 +240,8 @@ void InteractiveMCPTPlugin::initializePlugin()
 	imageLabel_->setContextMenuPolicy(Qt::CustomContextMenu);
 	
 	connect(imageLabel_,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(showContextMenu(QPoint)));
-    connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(mousePresse(QMouseEvent*)));
-    connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(mouseRelease(QMouseEvent*)));
+    connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(mousePressed(QMouseEvent*)));
+    connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(mouseReleased(QMouseEvent*)));
     connect(imageLabel_, SIGNAL(mouseMoved(QMouseEvent*)), this, SLOT(mouseMove(QMouseEvent*)));
     connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
 	connect(imageLabel_, SIGNAL(mouseLeaved(QEvent*)), this, SLOT(testFocusOut(QEvent*)));

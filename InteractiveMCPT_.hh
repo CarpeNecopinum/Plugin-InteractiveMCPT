@@ -179,8 +179,6 @@ private slots:
       void mousePressed(QMouseEvent* ev);
       void mouseReleased(QMouseEvent* ev);
 
-      void mousePresse(QMouseEvent* ev);
-      void mouseRelease(QMouseEvent* ev);
       void testMousePressed(QMouseEvent* ev);
       void testMouseReleased(QMouseEvent* ev);
 
