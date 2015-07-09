@@ -187,7 +187,7 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
     output[idx] = color;
 }*/
 
-__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed)
+__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed, bool firstRun)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     QueuedPixel& pixel = pixels[idx];
@@ -217,7 +217,9 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
             pixel.samples--;
         }
     }
-    output[idx] = color;
+    if (firstRun)
+        output[idx] = color;
+        else output[idx] += color;
 }
 
 /** C(++) Part **/
@@ -288,25 +290,23 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
     assert(pixels.size() % CUDA_BLOCK_SIZE == 0);
     float3* hostResults = new float3[pixels.size()];
 
+    bool firstRun = true;
     for (size_t pass = 0; pass < num_passes; ++pass)
     {
         //tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devKdTree, devCamera, rand() << 16 | rand()); CUDA_CHECK
-        tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand()); CUDA_CHECK
+        tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand(), firstRun); CUDA_CHECK
+        firstRun = false;
+    }
 
-        cudaMemcpy(hostResults, devResults, sizeof(float3) * pixels.size(), cudaMemcpyDeviceToHost); CUDA_CHECK
-
-        for (size_t i = 0; i < pixels.size(); ++i)
+    cudaMemcpy(hostResults, devResults, sizeof(float3) * pixels.size(), cudaMemcpyDeviceToHost); CUDA_CHECK
+    for (size_t i = 0; i < pixels.size(); ++i)
+    {
+        QueuedPixel& pixel = pixels[i];
+        if (pixel.samples > 0)
         {
-            QueuedPixel& pixel = pixels[i];
-            if (pixel.samples > 0)
-            {
-                size_t index = pixel.x + pixel.y * imageWidth;
-                colorMap[index] += toACG3(hostResults[i]);
-
-                const int samples = std::min(pixel.samples, 10);
-                pixel.samples -= samples;
-                sampleCounter[index] += samples;
-            }
+            size_t index = pixel.x + pixel.y * imageWidth;
+            colorMap[index] += toACG3(hostResults[i]);
+            sampleCounter[index] += pixel.samples;
         }
     }
 
