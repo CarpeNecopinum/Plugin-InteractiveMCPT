@@ -780,12 +780,11 @@ void InteractiveMCPTPlugin::clearImage()
     int imageHeight = PluginFunctions::viewerProperties().glState().viewport_height();
 
     // Create a QImage of the viewer size and clear it
-    if (mAccumulatedColor) delete[] mAccumulatedColor;
+    delete[] mAccumulatedColor;
     Vec3d zeroVec(0.,0.,0.);
     mAccumulatedColor = new Vec3d[imageWidth * imageHeight];
-    for (int y = 0; y < imageHeight; ++y)
-        for (int x = 0; x < imageWidth; ++x)
-            mAccumulatedColor[x + y * imageWidth] = zeroVec;
+    for (int i = 0; i < imageHeight * imageWidth; ++i)
+        mAccumulatedColor[i] = zeroVec;
 
     if (mSamples) delete[] mSamples;
     mSamples = new uint32_t[imageWidth * imageHeight];

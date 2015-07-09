@@ -12,7 +12,13 @@ void cudaTest(void);
 
 inline float3 toCudaVec(ACG::Vec3d acg) { return make_float3(acg[0], acg[1], acg[2]); }
 inline float3 toCudaVec(ACG::Vec4f acg) { return make_float3(acg[0], acg[1], acg[2]); }
-inline ACG::Vec3d toACG3(float3 cuda) { return ACG::Vec3d(cuda.x, cuda.y, cuda.z); }
+inline ACG::Vec3d toACG3(float3 cuda) {
+    if (!(!isnan(cuda.x) && !isnan(cuda.y) && !isnan(cuda.z)))
+    {
+        std::cout << "WADDAFACK" << std::endl;
+    }
+    return ACG::Vec3d(cuda.x, cuda.y, cuda.z);
+}
 
 size_t cudaBlockSize();
 
