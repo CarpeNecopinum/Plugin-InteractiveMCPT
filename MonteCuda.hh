@@ -7,6 +7,10 @@
 #include <vector_types.h>
 #include "InfoStructs.hh"
 
+#ifndef CUDA_RECTANGLE_SIZE
+#define CUDA_RECTANGLE_SIZE 32
+#endif
+
 void cudaTest(void);
 
 
@@ -21,6 +25,12 @@ inline ACG::Vec3d toACG3(float3 cuda) {
 }
 
 size_t cudaBlockSize();
+
+struct mcRectangleJob
+{
+    size_t left, top, width, height;
+    size_t numSamples;
+};
 
 struct mcMaterial
 {
@@ -67,3 +77,4 @@ void uploadKdTree(mcMaterial *materials, size_t materialCount, const std::vector
 void uploadBuffers(mcMaterial* materials, size_t materialCount, mcTriangle* tris, size_t triCount);
 void uploadCameraInfo(const CameraInfo& cam);
 void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth);
+void cudaRectangleTracePixels(mcRectangleJob& job, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth);

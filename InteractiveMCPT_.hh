@@ -234,6 +234,7 @@ protected:
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
 
+      void cudaRectangleJob(mcRectangleJob job);
 private:
     QTimer updateTimer_;
     bool mUseCuda = false;

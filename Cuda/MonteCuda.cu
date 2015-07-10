@@ -13,12 +13,7 @@
 
 #include "KdTree.hh"
 
-#ifndef CUDA_BLOCK_SIZE
-#define CUDA_BLOCK_SIZE 256
-#endif
-
-#define CUDA_CHECK
-//cudaCheck(__LINE__);
+#define CUDA_CHECK cudaCheck(__LINE__);
 
 
 void cudaCheck(int line)
@@ -211,7 +206,8 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
 
         /* Actual Path Tracing */
         float3 result = mcTrace(ray, mats, tris, triCount, &state);
-        if (!isnan(result.x) && !isnan(result.y) && !isnan(result.z))
+        if (!isnan(result.x) && !isnan(result.y) && !isnan(result.z)
+         && !isinf(result.x) && !isinf(result.y) && !isinf(result.z))
         {
             color += result;
             pixel.samples--;
@@ -222,6 +218,43 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
         else output[idx] += color;
 }
 
+__global__ void tracePixelsRect(mcRectangleJob* job, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed, bool firstRun)
+{
+    size_t blockX = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t blockY = threadIdx.y + blockIdx.y * blockDim.y;
+
+    if (blockX > job->width || blockY > job->height) return;
+    size_t idx = blockX + job->width * blockY;
+
+    curandState state;
+    curand_init ( seed, idx, 0, &state );
+
+    float3 color = make_float3(0.f, 0.f, 0.f);
+
+    uint2 pixel = {blockX + job->left, blockY + job->top};
+
+    const int samples = min(uint(job->numSamples), 10u);
+    for (int i = 0; i < samples;)
+    {
+        float x = float(pixel.x) + .5f * cudaRandomSymmetric(&state);
+        float y = float(pixel.y) + .5f * cudaRandomSymmetric(&state);
+
+        // Ray Setup //
+        float3 current_point = cam->image_plane_start + cam->x_dir * x - cam->y_dir * y;
+        mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
+
+        // Actual Path Tracing //
+        float3 result = mcTrace(ray, mats, tris, triCount, &state);
+        if (!isnan(result.x) && !isnan(result.y) && !isnan(result.z))
+        {
+            color += result;
+            i++;
+        }
+    }
+    if (firstRun)
+        output[idx] = color;
+        else output[idx] += color;
+}
 /** C(++) Part **/
 
 mcTriangle*  devTriangles = 0;
@@ -293,7 +326,6 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
     bool firstRun = true;
     for (size_t pass = 0; pass < num_passes; ++pass)
     {
-        //tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devKdTree, devCamera, rand() << 16 | rand()); CUDA_CHECK
         tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand(), firstRun); CUDA_CHECK
         firstRun = false;
     }
@@ -315,4 +347,49 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
 
     delete[] hostResults;
 }
+
+
+void cudaRectangleTracePixels(mcRectangleJob& job, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth)
+{
+    size_t num_passes = size_t(job.numSamples + 10 - 1) / 10;
+    const int originalNumSamples = job.numSamples;
+
+    float3* devResults;
+    cudaMalloc(&devResults, sizeof(float3) * job.width * job.height); CUDA_CHECK
+
+    mcRectangleJob* devJob;
+    cudaMalloc(&devJob, sizeof(mcRectangleJob));
+    cudaMemcpy(devJob, &job, sizeof(mcRectangleJob), cudaMemcpyHostToDevice);
+
+    float3* hostResults = new float3[job.width * job.height];
+
+    dim3 blockSize(CUDA_RECTANGLE_SIZE, CUDA_RECTANGLE_SIZE);
+    dim3 gridSize((job.width + CUDA_RECTANGLE_SIZE -1) / CUDA_RECTANGLE_SIZE, (job.height + CUDA_RECTANGLE_SIZE -1) / CUDA_RECTANGLE_SIZE);
+
+    bool firstRun = true;
+    for (size_t pass = 0; pass < num_passes; ++pass)
+    {
+        tracePixelsRect<<<gridSize, blockSize>>>(devJob, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand(), firstRun); CUDA_CHECK
+        job.numSamples -= 10;
+        cudaMemcpy(devJob, &job, sizeof(mcRectangleJob), cudaMemcpyHostToDevice);
+        firstRun = false;
+    }
+
+    cudaMemcpy(hostResults, devResults, sizeof(float3) * job.width * job.height, cudaMemcpyDeviceToHost); CUDA_CHECK
+
+
+    for (size_t y = 0; y < job.height; y++)
+    for (size_t x = 0; x < job.width; x++)
+    {
+        size_t index = (x + job.left) + (y + job.top) * imageWidth;
+        colorMap[index] += toACG3(hostResults[x + job.width * y]);
+        sampleCounter[index] += originalNumSamples;
+    }
+
+    cudaFree(devResults); CUDA_CHECK
+
+    delete[] hostResults;
+}
+
+
 

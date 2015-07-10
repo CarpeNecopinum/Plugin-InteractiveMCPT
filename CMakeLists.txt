@@ -34,4 +34,5 @@ else()
 message("No Cuda! You suck!")
 endif()
 
-add_definitions(-DCUDA_BLOCK_SIZE=256)
+add_definitions(-DCUDA_BLOCK_SIZE=1024)
+add_definitions(-DCUDA_RECTANGLE_SIZE=32)

@@ -367,6 +367,30 @@ CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
     return cam;
 }
 
+void InteractiveMCPTPlugin::cudaRectangleJob(mcRectangleJob job)
+{
+    #ifdef HAS_CUDA
+        for (size_t y = job.top; y < job.top + job.height; y++)
+        for (size_t x = job.left; x < job.left + job.width; x++)
+        {
+            size_t index = y * image_.width() + x;
+            mQueuedSamples[index]++;
+        }
+
+        cudaRectangleTracePixels(job, mAccumulatedColor, mSamples, image_.width());
+
+        for (size_t y = job.top; y < job.top + job.height; y++)
+        for (size_t x = job.left; x < job.left + job.width; x++)
+        {
+            size_t index = y * image_.width() + x;
+            mQueuedSamples[index]--;
+        }
+    #else
+        std::cerr << "You don't have compiled with CUDA you scrub!" << std::endl;
+        std::exit(-1);
+    #endif
+}
+
 void InteractiveMCPTPlugin::queueJob(RenderJob job)
 {
     for (QueuedPixel point : job.pixels)
@@ -395,29 +419,46 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
 
 void InteractiveMCPTPlugin::globalRender()
 {
-    RenderJob job;
     const int imageWidth  = image_.width();
     const int imageHeight = image_.height();
-    for (int y = 0; y < imageHeight; ++y)
+
+
+    if (!mUseCuda)
     {
-        for (int x = 0; x < imageWidth; ++x)
+        RenderJob job;
+        for (int y = 0; y < imageHeight; ++y)
         {
-            // Cancel processing if requested by user
-            if ( cancel_ ) {
-                return;
-            }
+            for (int x = 0; x < imageWidth; ++x)
+            {
+                // Cancel processing if requested by user
+                if ( cancel_ ) {
+                    return;
+                }
 
-            if (job.pixels.size() >= 16384) {
-                queueJob(job);
-                job.pixels.clear();
-            }
+                if (job.pixels.size() >= 16384) {
+                    queueJob(job);
+                    job.pixels.clear();
+                }
 
-            QueuedPixel point = {x,y, mSettings.samplesPerPixel};
-            job.pixels.push_back(point);
+                QueuedPixel point = {x,y, mSettings.samplesPerPixel};
+                job.pixels.push_back(point);
+            }
+        }
+        if (!job.pixels.empty())
+            queueJob(job);
+    } else {
+        const size_t blockSize = 4 * CUDA_RECTANGLE_SIZE;
+        for (size_t y = 0; y < imageHeight; y += blockSize)
+        {
+            for (size_t x = 0; x < imageWidth; x += blockSize)
+            {
+                mcRectangleJob job = {x, y, std::min(size_t(blockSize), imageWidth - x), std::min(size_t(blockSize), imageHeight - y), size_t(mSettings.samplesPerPixel)};
+                mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRectangleJob, job));
+            }
         }
     }
-    if (!job.pixels.empty())
-        queueJob(job);
+
+    if (!updateTimer_.isActive()) updateTimer_.start();
 }
 
 void InteractiveMCPTPlugin::setCudaActive(int active) {
