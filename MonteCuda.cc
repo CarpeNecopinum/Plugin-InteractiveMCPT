@@ -6,6 +6,7 @@
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
 #include <ObjectTypes/TriangleMesh/TriangleMeshTypes.hh>
 #include <ObjectTypes/TriangleMesh/PluginFunctionsTriangleMesh.hh>
+#include "ACGMathAddon.hh"
 
 size_t cudaBlockSize() { return CUDA_BLOCK_SIZE; }
 
@@ -38,8 +39,8 @@ void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::Obje
         // Save material
         ACG::SceneGraph::Material& material = object.materialNode()->material();
         mcMaterial mat = make_material(
-                    material.diffuseColor(),
-                    material.specularColor(),
+                    vecPow(material.diffuseColor(), 2.2),
+                    vecPow(material.specularColor(), 2.2),
                     double(material.shininess()) * 10.0,
                     float(material.reflectance()) * ACG::Vec4f(1.0, 1.0, 1.0, 1.0)
                 );

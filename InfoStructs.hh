@@ -24,3 +24,4 @@ struct QueuedPixel
 {
     int x, y, samples;
 };
+

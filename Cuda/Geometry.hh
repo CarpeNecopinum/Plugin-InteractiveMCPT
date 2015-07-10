@@ -115,6 +115,8 @@ __device__ mcIntersection mcIntersectTriangle(mcRay ray, mcTriangle triangle)
     result.depth = FLT_MAX;
 
     result.normal = normalize(cross(triangle.corners[1] - triangle.corners[0], triangle.corners[2] - triangle.corners[0]));
+    if (dot(result.normal, ray.direction) > 0.0) return result;
+
     float depth = dot(triangle.corners[0] - ray.origin, result.normal) / dot(ray.direction, result.normal);
     if (depth <= 0.001f) { return result; }
 

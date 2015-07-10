@@ -16,6 +16,7 @@
 #include <QSlider>
 
 #include "ImageViewer.hh"
+#include "ACGMathAddon.hh"
 
 #include "InteractiveDrawing.hh"
 
@@ -24,15 +25,6 @@
 InteractiveDrawing mInteractiveDrawing;
 QDoubleSpinBox * mSeSigma;
 QLabel * mSigmaLabel;
-
-Vec3d vecPow(const Vec3d& in, double exponent)
-{
-    return Vec3d(
-                std::pow(in[0], exponent),
-                std::pow(in[1], exponent),
-                std::pow(in[2], exponent)
-            );
-}
 
 void InteractiveMCPTPlugin::changeBrushType(int type){
     mInteractiveDrawing.switchBrush(type);
@@ -73,6 +65,11 @@ void InteractiveMCPTPlugin::smooth(){
 
 void InteractiveMCPTPlugin::mousePressed(QMouseEvent *ev){
     mInteractiveDrawing.startBrushStroke();
+}
+
+void InteractiveMCPTPlugin::mouseReleased(QMouseEvent *ev)
+{
+    mInteractiveDrawing.endBrushStroke();
 }
 
 void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
@@ -256,7 +253,7 @@ void InteractiveMCPTPlugin::initializePlugin()
 	initializeDrawingGUI(sideboxGrid, imageWindow);
 
     connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
-    updateTimer_.setInterval(333);
+    updateTimer_.setInterval(666);
     updateTimer_.setSingleShot(false);
 }
 
@@ -447,7 +444,7 @@ void InteractiveMCPTPlugin::globalRender()
         if (!job.pixels.empty())
             queueJob(job);
     } else {
-        const size_t blockSize = 4 * CUDA_RECTANGLE_SIZE;
+        const size_t blockSize = 2 * CUDA_RECTANGLE_SIZE;
         for (size_t y = 0; y < imageHeight; y += blockSize)
         {
             for (size_t x = 0; x < imageWidth; x += blockSize)
