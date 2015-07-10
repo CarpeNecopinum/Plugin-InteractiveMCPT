@@ -3,6 +3,7 @@
 
 #include "InteractiveMCPT_.hh"
 #include "ImageViewer.hh"
+#include <QMetaObject>
 
 void Smoother::init(InteractiveMCPTPlugin *plugin){
     const int imageWidth = plugin->getImageViewer()->getImage()->width();
@@ -137,7 +138,7 @@ void Smoother::smoothConcurrent(SmoothConcurrentArgument args){
         }
     }
     delete kernel;
-    plugin->updateImageWidget();
+    QMetaObject::invokeMethod(plugin, "updateImageWidget", Qt::QueuedConnection);
 }
 
 void Smoother::setMaxAngleDeviation(double maxAngleDev){
