@@ -255,6 +255,8 @@ void InteractiveMCPTPlugin::initializePlugin()
     connect(&updateTimer_,SIGNAL(timeout()),this,SLOT(updateImageWidget()) );
     updateTimer_.setInterval(666);
     updateTimer_.setSingleShot(false);
+
+    QThreadPool::globalInstance()->setMaxThreadCount(256);
 }
 
 void InteractiveMCPTPlugin::showContextMenu(QPoint _point) {
@@ -444,7 +446,7 @@ void InteractiveMCPTPlugin::globalRender()
         if (!job.pixels.empty())
             queueJob(job);
     } else {
-        const size_t blockSize = 2 * CUDA_RECTANGLE_SIZE;
+        const size_t blockSize = 4 * CUDA_RECTANGLE_SIZE;
         for (size_t y = 0; y < imageHeight; y += blockSize)
         {
             for (size_t x = 0; x < imageWidth; x += blockSize)

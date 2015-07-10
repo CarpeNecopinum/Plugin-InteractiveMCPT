@@ -112,8 +112,8 @@ __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t 
     float3 color = make_float3(0.0f, 0.0f, 0.0f);
     float3 weightLeft = make_float3(1.0f, 1.0f, 1.0f);
 
-    int bounces = 0;
-    while (bounces < 4 && (weightLeft.x > 0.02f || weightLeft.y > 0.01f || weightLeft.z > 0.05f))
+    int bounces = -3;
+    while (bounces < 1 && (weightLeft.x > 0.02f || weightLeft.y > 0.01f || weightLeft.z > 0.05f))
     {
         mcIntersection hit = mcIntersectScene(ray, mats, tris, triCount);
 
@@ -122,7 +122,7 @@ __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t 
 
         color += weightLeft * hit.material.emissiveColor;
 
-        if (bounces < 3)
+        if (bounces < 0)
         {
             float diffuseReflectance = mcBrightness(hit.material.diffuseColor);
             float specularReflectance = mcBrightness(hit.material.specularColor);
