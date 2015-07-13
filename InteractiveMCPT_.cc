@@ -18,11 +18,8 @@
 #include "ImageViewer.hh"
 #include "ACGMathAddon.hh"
 
-#include "InteractiveDrawing.hh"
-
 #define EPS (1e-6)
 
-InteractiveDrawing mInteractiveDrawing;
 QDoubleSpinBox * mSeSigma;
 QLabel * mSigmaLabel;
 
@@ -490,17 +487,22 @@ void InteractiveMCPTPlugin::threadFinished() {
 
 }
 
-void InteractiveMCPTPlugin::updateImageWidget() {
+void InteractiveMCPTPlugin::updateImageWidget(int minX, int minY, int maxX, int maxY) {
 
-    const Vec3d markerColors[] = { {0.0, 1.0, 0.0}, {1.0, 1.0, 0.0}, {1.0, 0.0, 0.0} };
+    if (maxX == 0)
+        maxX = image_.width();
+
+
+    if (maxY == 0)
+        maxY = image_.height();
 
 	// InteractivDrawing Update:
     mInteractiveDrawing.update(this, imageLabel_);
 
     // Generate Image from accumulated buffer and sample counter
-    for (int y = 0; y < image_.height(); ++y)
+    for (int y = minY; y < maxY; ++y)
     {
-        for (int x = 0; x < image_.width(); ++x)
+        for (int x = minX; x < maxX; ++x)
         {
             int index = x + image_.width() * y;
             Vec3d color = mRenderTarget.accumulatedColor[index];
@@ -519,7 +521,11 @@ void InteractiveMCPTPlugin::updateImageWidget() {
                 color = (1.0 - alpha) * color + alpha * Vec3d(0.0, 1.0, 0.0);
             }
 
+            if (mRenderTarget.paintCount[index])
+                color = 0.5 * color + 0.5 * Vec3d(0.0, 0.0, 1.0);
+
             image_.setPixel(QPoint(x,y), QColor::fromRgbF(color[0], color[1], color[2]).rgb());
+
         }
     }
 

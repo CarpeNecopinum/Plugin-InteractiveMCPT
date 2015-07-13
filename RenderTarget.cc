@@ -12,6 +12,10 @@ void RenderTarget::reset(size_t width, size_t height)
     sampleCount = new uint32_t[width * height];
     memset(sampleCount, 0, width * height * sizeof(uint32_t));
 
+    delete[] paintCount;
+    paintCount = new uint32_t[width * height];
+    memset(paintCount, 0, width * height * sizeof(uint32_t));
+
     delete[] queuedSamples;
     queuedSamples = new uint8_t[width * height];
     memset(queuedSamples, 0, width * height * sizeof(uint8_t));

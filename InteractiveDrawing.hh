@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QObject>
+
 #include <InfoStructs.hh>
+#include <map>
 
 class QMouseEvent;
 class ImageViewer;
@@ -30,6 +32,8 @@ Q_OBJECT
 
 public:
 
+
+    InteractiveDrawing(InteractiveMCPTPlugin *plugin) : _plugin(plugin){}
 
 	inline Brush& getBrush(){ return _brush; }
 	
@@ -61,4 +65,6 @@ private:
     bool _brushStroke = false;
 
     std::vector<QueuedPixel> _brushStrokePixels = {};
+
+    InteractiveMCPTPlugin *_plugin = 0;
 };

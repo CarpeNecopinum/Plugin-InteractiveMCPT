@@ -4,6 +4,8 @@
 #include "ImageViewer.hh"
 #include <QMouseEvent>
 
+#define CUDA_OPT_JOBSIZE 16 * 1024
+
 void InteractiveDrawing::update(InteractiveMCPTPlugin* plugin, ImageViewer* imageViewer){
 	
 }
@@ -14,9 +16,40 @@ void InteractiveDrawing::startBrushStroke(){
 }
 
 void InteractiveDrawing::endBrushStroke(){
+
     _brushStroke = false;
-    // Send in the jobs here:
-    // for each pixel inside strokePixel array, check for dups, create jobs.
+
+    InteractiveMCPTPlugin::RenderJob renderJob;
+
+    const int imageWidth = _plugin->getImageViewer()->getImage()->width();
+    int index = 0;
+
+    for (const QueuedPixel &qp : _brushStrokePixels){
+        index = qp.y * imageWidth + qp.x;
+        _plugin->getRenderTarget().paintCount[index]--;
+        if (_plugin->getRenderTarget().paintCount[index] == 0){
+
+            if (renderJob.pixels.size() >= CUDA_OPT_JOBSIZE){
+                _plugin->queueJob(renderJob);
+                renderJob.pixels.clear();
+            }
+
+            renderJob.pixels.push_back(qp);
+        }
+    }
+
+    if (renderJob.pixels.size() > 0){
+        _plugin->queueJob(renderJob);
+        renderJob.pixels.clear();
+    }
+
+    QMetaObject::invokeMethod(_plugin, "updateImageWidget", Qt::QueuedConnection);
+}
+
+
+void InteractiveDrawing::updateBrushStroke(InteractiveMCPTPlugin *plugin, QMouseEvent* ev){
+
+    traceBrush(plugin, ev->pos().x(), ev->pos().y());
 }
 
 void InteractiveDrawing::switchBrush(int type){
@@ -31,14 +64,11 @@ void InteractiveDrawing::setSigma(double sigma) {
     _sigma = sigma;
 }
 
-void InteractiveDrawing::updateBrushStroke(InteractiveMCPTPlugin *plugin, QMouseEvent* ev){
-    traceBrush(plugin, ev->pos().x(), ev->pos().y());
-}
 
 void InteractiveDrawing::traceBrush(InteractiveMCPTPlugin* plugin, int posX, int posY){
     if(_activeBrush == NONE)
         return;
-    InteractiveMCPTPlugin::RenderJob renderJob;
+
     int brushSize = _brush.getSize();
 
     const int imageWidth = plugin->getImageViewer()->getImage()->width();
@@ -63,20 +93,14 @@ void InteractiveDrawing::traceBrush(InteractiveMCPTPlugin* plugin, int posX, int
                 if(_activeBrush == GAUSSED_CIRCLE_BRUSH)
                     samples = (int) (gaussDistribution(offX, offY) / gaussScaling * samples);
                 QueuedPixel pixel = { currX, currY, samples};
-                renderJob.pixels.push_back(pixel);
-            }
-
-            if (renderJob.pixels.size() >= CUDA_BLOCK_SIZE){
-                plugin->queueJob(renderJob);
-                renderJob.pixels.clear();
+                _brushStrokePixels.push_back(pixel);
+                plugin->getRenderTarget().paintCount[currX + imageWidth * currY]++;
             }
         }
     }
 
-    if (renderJob.pixels.size() > 0)
-        plugin->queueJob(renderJob);
 
-    plugin->getUpdateTimer().start();
+    QMetaObject::invokeMethod(plugin, "updateImageWidget", Qt::QueuedConnection, Q_ARG(int, posX - brushSize), Q_ARG(int, posY - brushSize), Q_ARG(int, posX + brushSize), Q_ARG(int, posY + brushSize));
 }
 
 double InteractiveDrawing::gaussDistribution(int x, int y) {

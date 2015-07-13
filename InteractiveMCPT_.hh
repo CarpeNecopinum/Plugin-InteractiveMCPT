@@ -23,6 +23,8 @@
 #include "Smoothing.hh"
 #include "RenderTarget.hh"
 
+#include "InteractiveDrawing.hh"
+
 class ImageViewer;
 
 struct Face
@@ -75,6 +77,9 @@ class InteractiveMCPTPlugin : public QObject, BaseInterface, LoggingInterface, T
     void finishJob(QString _jobID );
 
   public:
+
+    InteractiveMCPTPlugin() : mInteractiveDrawing(this){}
+
     // BaseInterface
     QString name() { return (QString("Interactive MCPT")); }
     QString description( ) { return (QString("")); }
@@ -178,7 +183,7 @@ private slots:
    public slots:
       QString version() { return QString("1.0"); }
 
-      void updateImageWidget();
+      void updateImageWidget(int minX = 0, int minY = 0, int maxX = 0, int maxY = 0);
       void mousePressed(QMouseEvent* ev);
       void mouseReleased(QMouseEvent* ev);
 
@@ -221,6 +226,8 @@ public:
     Intersection intersectScene(const Ray &_ray);
 
 
+    inline RenderTarget &getRenderTarget(){ return mRenderTarget;}
+
 protected:
       CameraInfo mCam;
       double mTone = 1.0;
@@ -258,6 +265,8 @@ private:
     void clearImage();
 
     QImage* getImage();
+
+    InteractiveDrawing mInteractiveDrawing;
 
     void tracePixel(size_t x, size_t y);
 
