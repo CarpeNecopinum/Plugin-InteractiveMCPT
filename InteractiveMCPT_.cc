@@ -60,7 +60,7 @@ void InteractiveMCPTPlugin::changeSmoothSigma(double smoothSigma){
 }
 
 void InteractiveMCPTPlugin::smooth(){
-    mSmoother.smooth(this, mAccumulatedColor, mSamples);
+    mSmoother.smooth(this, mRenderTarget.accumulatedColor, mRenderTarget.sampleCount);
 }
 
 void InteractiveMCPTPlugin::mousePressed(QMouseEvent *ev){
@@ -98,6 +98,11 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
     QCheckBox* cudaCheckBox = new QCheckBox("Use Cuda for Rendering", parent);
     connect(cudaCheckBox, SIGNAL(stateChanged(int)), this, SLOT(setCudaActive(int)));
     layout->addWidget(cudaCheckBox, currentRow++, 0, 1, 2);
+
+    // Cuda Checkbox
+    QCheckBox* rectCheckBox = new QCheckBox("Disable block-wise rendering", parent);
+    connect(rectCheckBox, SIGNAL(stateChanged(int)), this, SLOT(setDisableRect(int)));
+    layout->addWidget(rectCheckBox, currentRow++, 0, 1, 2);
 #else
     layout->addWidget(new QLabel("This would be more fun with Cuda!", parent), currentRow++, 0, 1, 2);
 #endif
@@ -198,9 +203,9 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
 
 void InteractiveMCPTPlugin::initializePlugin()
 {
-    mAccumulatedColor = 0;
-    mSamples = 0;
-    mQueuedSamples = 0;
+    mRenderTarget.accumulatedColor = 0;
+    mRenderTarget.sampleCount = 0;
+    mRenderTarget.queuedSamples = 0;
 	mSettings.samplesPerPixel = 1;
 
 #ifdef HAS_CUDA
@@ -298,14 +303,14 @@ void InteractiveMCPTPlugin::openWindow() {
 void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 {
 #ifdef HAS_CUDA
-    cudaTracePixels(job.pixels, mAccumulatedColor, mSamples, image_.width());
+    cudaTracePixels(job.pixels, mRenderTarget, image_.width());
 
     std::vector<QueuedPixel>::iterator end = job.pixels.end();
     for (std::vector<QueuedPixel>::iterator it = job.pixels.begin(); it != end; ++it)
     {
         QueuedPixel& point = *it;
         size_t index = point.y * image_.width() + point.x;
-        mQueuedSamples[index]--;
+        mRenderTarget.queuedSamples[index]--;
     }
     //updateImageWidget();
 #else
@@ -325,7 +330,7 @@ void InteractiveMCPTPlugin::runJob(RenderJob job)
             tracePixel(queuedPixel.x, queuedPixel.y);
 
         size_t index = queuedPixel.y * image_.width() + queuedPixel.x;
-        mQueuedSamples[index]--;
+        mRenderTarget.queuedSamples[index]--;
     }
 }
 
@@ -346,8 +351,8 @@ void InteractiveMCPTPlugin::tracePixel(size_t x, size_t y)
     /* Write to accumulated Buffer + Sample counter */
 
     size_t index = x + y * image_.width();
-    mAccumulatedColor[index] += Vec3d(color[0], color[1], color[2]);
-    mSamples[index]++;
+    mRenderTarget.accumulatedColor[index] += Vec3d(color[0], color[1], color[2]);
+    mRenderTarget.sampleCount[index]++;
 }
 
 CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
@@ -373,16 +378,16 @@ void InteractiveMCPTPlugin::cudaRectangleJob(mcRectangleJob job)
         for (size_t x = job.left; x < job.left + job.width; x++)
         {
             size_t index = y * image_.width() + x;
-            mQueuedSamples[index]++;
+            mRenderTarget.queuedSamples[index]++;
         }
 
-        cudaRectangleTracePixels(job, mAccumulatedColor, mSamples, image_.width());
+        cudaRectangleTracePixels(job, mRenderTarget, image_.width());
 
         for (size_t y = job.top; y < job.top + job.height; y++)
         for (size_t x = job.left; x < job.left + job.width; x++)
         {
             size_t index = y * image_.width() + x;
-            mQueuedSamples[index]--;
+            mRenderTarget.queuedSamples[index]--;
         }
     #else
         std::cerr << "You don't have compiled with CUDA you scrub!" << std::endl;
@@ -395,7 +400,7 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
     for (QueuedPixel point : job.pixels)
     {
         size_t index = point.y * image_.width() + point.x;
-        mQueuedSamples[index]++;
+        mRenderTarget.queuedSamples[index]++;
     }
 
     if (mUseCuda)
@@ -422,7 +427,7 @@ void InteractiveMCPTPlugin::globalRender()
     const int imageHeight = image_.height();
 
 
-    if (!mUseCuda)
+    if (!mUseCuda || mRectDisabled)
     {
         RenderJob job;
         for (int y = 0; y < imageHeight; ++y)
@@ -452,7 +457,7 @@ void InteractiveMCPTPlugin::globalRender()
             for (size_t x = 0; x < imageWidth; x += blockSize)
             {
                 mcRectangleJob job = {x, y, std::min(size_t(blockSize), imageWidth - x), std::min(size_t(blockSize), imageHeight - y), size_t(mSettings.samplesPerPixel)};
-                mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRectangleJob, job));
+                mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRectangleJob, std::move(job)));
             }
         }
     }
@@ -462,6 +467,10 @@ void InteractiveMCPTPlugin::globalRender()
 
 void InteractiveMCPTPlugin::setCudaActive(int active) {
     mUseCuda = !!active;
+}
+
+void InteractiveMCPTPlugin::setDisableRect(int disabled) {
+    mRectDisabled = !!disabled;
 }
 
 
@@ -494,15 +503,15 @@ void InteractiveMCPTPlugin::updateImageWidget() {
         for (int x = 0; x < image_.width(); ++x)
         {
             int index = x + image_.width() * y;
-            Vec3d color = mAccumulatedColor[index];
-            color /= mSamples[index];
+            Vec3d color = mRenderTarget.accumulatedColor[index];
+            color /= mRenderTarget.sampleCount[index];
 
             color *= mTone;
             color.maximize(Vec3d(0.0, 0.0, 0.0));
             color.minimize(Vec3d(1.0, 1.0, 1.0));
             color = vecPow(color, 1.0 / 2.2);
 
-            uint8_t left = mQueuedSamples[index];
+            uint8_t left = mRenderTarget.queuedSamples[index];
 
             if (left > 0)
             {
@@ -519,8 +528,8 @@ void InteractiveMCPTPlugin::updateImageWidget() {
     imageLabel_->resize(image_.size());
     imageWindow->adjustSize();
 
-    // update Job queue
-
+    // update Job queue (stop and update reversed to circumvent race condition)
+    if (mRunningFutures.empty()) updateTimer_.stop();
     for (std::vector<QFuture<void> >::iterator it = mRunningFutures.begin();
          it != mRunningFutures.end();)
     {
@@ -530,7 +539,6 @@ void InteractiveMCPTPlugin::updateImageWidget() {
             ++it;
         }
     }
-    if (mRunningFutures.empty()) updateTimer_.stop();
 }
 
 InteractiveMCPTPlugin::Intersection InteractiveMCPTPlugin::intersectScene(const Ray& _ray)
@@ -690,6 +698,8 @@ InteractiveMCPTPlugin::intersectTriangle( const Face&        _face,
 		Vec3d&             _intersection,
 		double&            _t ) const
 {
+    if ((_normal | _ray.direction) > 0.0) return false;
+
     _t = ((_face.p0 - _ray.origin) | _normal) / (_normal | _ray.direction);
     if (_t <= EPS) return false;
 
@@ -819,20 +829,7 @@ void InteractiveMCPTPlugin::clearImage()
     int imageWidth  = PluginFunctions::viewerProperties().glState().viewport_width();
     int imageHeight = PluginFunctions::viewerProperties().glState().viewport_height();
 
-    // Create a QImage of the viewer size and clear it
-    delete[] mAccumulatedColor;
-    Vec3d zeroVec(0.,0.,0.);
-    mAccumulatedColor = new Vec3d[imageWidth * imageHeight];
-    for (int i = 0; i < imageHeight * imageWidth; ++i)
-        mAccumulatedColor[i] = zeroVec;
-
-    if (mSamples) delete[] mSamples;
-    mSamples = new uint32_t[imageWidth * imageHeight];
-    memset(mSamples, 0, imageWidth * imageHeight * sizeof(uint32_t));
-
-    if (mQueuedSamples) delete[] mQueuedSamples;
-    mQueuedSamples = new uint8_t[imageWidth * imageHeight];
-    memset(mQueuedSamples, 0, imageWidth * imageHeight * sizeof(uint8_t));
+    mRenderTarget.reset(imageWidth, imageHeight);
 
     image_ = QImage(imageWidth,imageHeight,QImage::Format_RGB32);
     image_.fill(Qt::black);

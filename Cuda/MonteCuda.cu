@@ -12,6 +12,7 @@
 #include "BRDF.hh"
 
 #include "KdTree.hh"
+#include "../RenderTarget.hh"
 
 #define CUDA_CHECK cudaCheck(__LINE__);
 
@@ -136,6 +137,7 @@ __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t 
                 : sample = mcRandomDirCosPowerTheta(mirrored, hit.material.specularExponent, state);
             float density = (diffuseReflectance / totalReflectance) * mcDensityCosTheta(hit.normal, sample)
                           + (specularReflectance / totalReflectance) * mcDensityCosPowerTheta(mirrored, hit.material.specularExponent, sample);
+            density = max(density, 1.0f / 10.0f);
 
             mcRay reflectedRay = {hit.position, sample};
             float costheta = dot(sample, hit.normal);
@@ -218,7 +220,7 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
         else output[idx] += color;
 }
 
-__global__ void tracePixelsRect(mcRectangleJob* job, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed, bool firstRun)
+__global__ void tracePixelsRect(mcRectangleJob* job, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed)
 {
     size_t blockX = threadIdx.x + blockIdx.x * blockDim.x;
     size_t blockY = threadIdx.y + blockIdx.y * blockDim.y;
@@ -251,9 +253,7 @@ __global__ void tracePixelsRect(mcRectangleJob* job, float3* output, mcMaterial*
             i++;
         }
     }
-    if (firstRun)
-        output[idx] = color;
-        else output[idx] += color;
+    output[idx] += color;
 }
 /** C(++) Part **/
 
@@ -305,7 +305,7 @@ void uploadCameraInfo(const CameraInfo& cam)
 }
 
 
-void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth)
+void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderTarget& target, size_t imageWidth)
 {
     QueuedPixel* devPixels;
     cudaMalloc(&devPixels, sizeof(QueuedPixel) * pixels.size()); CUDA_CHECK
@@ -331,16 +331,19 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
     }
 
     cudaMemcpy(hostResults, devResults, sizeof(float3) * pixels.size(), cudaMemcpyDeviceToHost); CUDA_CHECK
+
+    target.mutex.lock();
     for (size_t i = 0; i < pixels.size(); ++i)
     {
         QueuedPixel& pixel = pixels[i];
         if (pixel.samples > 0)
         {
             size_t index = pixel.x + pixel.y * imageWidth;
-            colorMap[index] += toACG3(hostResults[i]);
-            sampleCounter[index] += pixel.samples;
+            target.accumulatedColor[index] += toACG3(hostResults[i]);
+            target.sampleCount[index] += pixel.samples;
         }
     }
+    target.mutex.unlock();
 
     cudaFree(devPixels); CUDA_CHECK
     cudaFree(devResults); CUDA_CHECK
@@ -349,13 +352,14 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uin
 }
 
 
-void cudaRectangleTracePixels(mcRectangleJob& job, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth)
+void cudaRectangleTracePixels(mcRectangleJob& job, RenderTarget& target, size_t imageWidth)
 {
     size_t num_passes = size_t(job.numSamples + 10 - 1) / 10;
     const int originalNumSamples = job.numSamples;
 
     float3* devResults;
     cudaMalloc(&devResults, sizeof(float3) * job.width * job.height); CUDA_CHECK
+    cudaMemset(devResults, 0, sizeof(float3) * job.width * job.height);
 
     mcRectangleJob* devJob;
     cudaMalloc(&devJob, sizeof(mcRectangleJob));
@@ -365,26 +369,27 @@ void cudaRectangleTracePixels(mcRectangleJob& job, ACG::Vec3d* colorMap, uint32_
 
     dim3 blockSize(CUDA_RECTANGLE_SIZE, CUDA_RECTANGLE_SIZE);
     dim3 gridSize((job.width + CUDA_RECTANGLE_SIZE -1) / CUDA_RECTANGLE_SIZE, (job.height + CUDA_RECTANGLE_SIZE -1) / CUDA_RECTANGLE_SIZE);
+    //dim3 gridSize(job.width / CUDA_RECTANGLE_SIZE, job.height / CUDA_RECTANGLE_SIZE);
 
-    bool firstRun = true;
     for (size_t pass = 0; pass < num_passes; ++pass)
     {
-        tracePixelsRect<<<gridSize, blockSize>>>(devJob, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand(), firstRun); CUDA_CHECK
+        tracePixelsRect<<<gridSize, blockSize>>>(devJob, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand()); CUDA_CHECK
         job.numSamples -= 10;
         cudaMemcpy(devJob, &job, sizeof(mcRectangleJob), cudaMemcpyHostToDevice);
-        firstRun = false;
     }
 
+    cudaDeviceSynchronize();
     cudaMemcpy(hostResults, devResults, sizeof(float3) * job.width * job.height, cudaMemcpyDeviceToHost); CUDA_CHECK
 
-
+    target.mutex.lock();
     for (size_t y = 0; y < job.height; y++)
     for (size_t x = 0; x < job.width; x++)
     {
         size_t index = (x + job.left) + (y + job.top) * imageWidth;
-        colorMap[index] += toACG3(hostResults[x + job.width * y]);
-        sampleCounter[index] += originalNumSamples;
+        target.accumulatedColor[index] += toACG3(hostResults[x + job.width * y]);
+        target.sampleCount[index] += originalNumSamples;
     }
+    target.mutex.unlock();
 
     cudaFree(devResults); CUDA_CHECK
 

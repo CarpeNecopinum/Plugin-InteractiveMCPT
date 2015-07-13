@@ -9,6 +9,7 @@
 #include <QRunnable>
 
 #include <QTimer>
+#include <QMutex>
 #include <stdint.h>
 
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
@@ -20,6 +21,7 @@
 
 #include "InfoStructs.hh"
 #include "Smoothing.hh"
+#include "RenderTarget.hh"
 
 class ImageViewer;
 
@@ -90,6 +92,7 @@ private slots:
 
     void globalRender();
     void setCudaActive(int active);
+    void setDisableRect(int disabled);
 
     void changeBrushType(int type);
     void changeRaysPerPixel(int rays) { mSettings.samplesPerPixel = rays; }
@@ -208,28 +211,28 @@ public:
 
     CameraInfo& getCam(){return mCam;}
 
+    struct Intersection
+    {
+        Vec3d position;
+        Vec3d normal;
+        double depth;
+        Material material;
+    };
+    Intersection intersectScene(const Ray &_ray);
+
+
 protected:
       CameraInfo mCam;
       double mTone = 1.0;
 
       CameraInfo computeCameraInfo() const;
-      Vec3d* mAccumulatedColor;
-      uint32_t* mSamples;
-      uint8_t* mQueuedSamples;
+      RenderTarget mRenderTarget;
 
       RenderSettings mSettings;
 
       Smoother mSmoother;
 
-public:
-      struct Intersection
-      {
-          Vec3d position;
-          Vec3d normal;
-          double depth;
-          Material material;
-      };
-      Intersection intersectScene(const Ray &_ray);
+
 protected:
       void runJob(RenderJob job);
       std::vector<QFuture<void> > mRunningFutures;
@@ -238,6 +241,7 @@ protected:
 private:
     QTimer updateTimer_;
     bool mUseCuda = false;
+    bool mRectDisabled = false;
 
     // The rendered image
     QImage image_;

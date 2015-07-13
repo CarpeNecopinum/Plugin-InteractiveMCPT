@@ -71,10 +71,11 @@ struct mcRay
     float3 direction;
 };
 
+struct RenderTarget;
 
 void uploadGeometry(PluginFunctions::ObjectIterator start, PluginFunctions::ObjectIterator end);
 void uploadKdTree(mcMaterial *materials, size_t materialCount, const std::vector<mcTriangle>& triangles);
 void uploadBuffers(mcMaterial* materials, size_t materialCount, mcTriangle* tris, size_t triCount);
 void uploadCameraInfo(const CameraInfo& cam);
-void cudaTracePixels(std::vector<QueuedPixel> &pixels, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth);
-void cudaRectangleTracePixels(mcRectangleJob& job, ACG::Vec3d* colorMap, uint32_t* sampleCounter, size_t imageWidth);
+void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderTarget &target, size_t imageWidth);
+void cudaRectangleTracePixels(mcRectangleJob& job, RenderTarget &target, size_t imageWidth);
