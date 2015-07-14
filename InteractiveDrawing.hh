@@ -36,6 +36,7 @@ public:
     InteractiveDrawing(InteractiveMCPTPlugin *plugin) : _plugin(plugin){}
 
 	inline Brush& getBrush(){ return _brush; }
+    inline BRUSHES getActiveBrush() {return _activeBrush;}
 	
     void switchBrush(int type);
 
@@ -58,6 +59,7 @@ public:
     inline std::vector<QueuedPixel> &getBrushStrokePixels(){ return _brushStrokePixels;}
 
 private:
+
     BRUSHES _activeBrush = NONE;
 	Brush _brush;
     double _sigma = 0.75, _doubleGaussSigmaSquared = _brush.getSize() * _sigma * _brush.getSize() * _sigma / 2.0;
@@ -67,4 +69,9 @@ private:
     std::vector<QueuedPixel> _brushStrokePixels = {};
 
     InteractiveMCPTPlugin *_plugin = 0;
+
+    int _brushMinX = 0;
+    int _brushMinY = 0;
+    int _brushMaxX = 0;
+    int _brushMaxY = 0;
 };

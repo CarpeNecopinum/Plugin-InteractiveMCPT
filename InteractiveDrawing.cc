@@ -13,6 +13,9 @@ void InteractiveDrawing::update(InteractiveMCPTPlugin* plugin, ImageViewer* imag
 void InteractiveDrawing::startBrushStroke(){
     _brushStroke = true;
     _brushStrokePixels.clear();
+
+    _brushMaxX = _brushMaxY = 0;
+    _brushMinX = _brushMinY = 10000;
 }
 
 void InteractiveDrawing::endBrushStroke(){
@@ -43,7 +46,7 @@ void InteractiveDrawing::endBrushStroke(){
         renderJob.pixels.clear();
     }
 
-    QMetaObject::invokeMethod(_plugin, "updateImageWidget", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(_plugin, "updateImageWidget", Qt::QueuedConnection, Q_ARG(int, _brushMinX), Q_ARG(int, _brushMinY), Q_ARG(int, _brushMaxX), Q_ARG(int, _brushMaxY));
 }
 
 
@@ -54,6 +57,7 @@ void InteractiveDrawing::updateBrushStroke(InteractiveMCPTPlugin *plugin, QMouse
 
 void InteractiveDrawing::switchBrush(int type){
     _activeBrush = (BRUSHES) type;
+    _plugin->getImageViewer()->changeCursor(type);
 }
 
 void InteractiveDrawing::updateSigma(){
@@ -66,6 +70,7 @@ void InteractiveDrawing::setSigma(double sigma) {
 
 
 void InteractiveDrawing::traceBrush(InteractiveMCPTPlugin* plugin, int posX, int posY){
+
     if(_activeBrush == NONE)
         return;
 
@@ -95,6 +100,12 @@ void InteractiveDrawing::traceBrush(InteractiveMCPTPlugin* plugin, int posX, int
                 QueuedPixel pixel = { currX, currY, samples};
                 _brushStrokePixels.push_back(pixel);
                 plugin->getRenderTarget().paintCount[currX + imageWidth * currY]++;
+
+                if (currX < _brushMinX) _brushMinX = currX;
+                if (currX > _brushMaxX) _brushMaxX = currX;
+                if (currY < _brushMinY) _brushMinY = currY;
+                if (currY > _brushMaxY) _brushMaxY = currY;
+
             }
         }
     }

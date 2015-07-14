@@ -37,6 +37,7 @@ void InteractiveMCPTPlugin::changeBrushType(int type){
 void InteractiveMCPTPlugin::changeBrushSize(int size){
     mInteractiveDrawing.getBrush().setSize(size);
     mInteractiveDrawing.updateSigma();
+    imageLabel_->updateCursorIcon();
 }
 
 void InteractiveMCPTPlugin::changeSigma(double sigma){
@@ -69,17 +70,10 @@ void InteractiveMCPTPlugin::mouseReleased(QMouseEvent *ev)
     mInteractiveDrawing.endBrushStroke();
 }
 
-void InteractiveMCPTPlugin::testMousePressed(QMouseEvent *ev){
-	emit log(LOGERR, QString("MousePressed"));
-    mInteractiveDrawing.traceBrush(this, ev->x(), ev->y());
+void InteractiveMCPTPlugin::focusIn(QEvent* ev){
 }
 
-void InteractiveMCPTPlugin::testFocusIn(QEvent* ev){
-	emit log(LOGERR, QString("Focus In!"));
-}
-
-void InteractiveMCPTPlugin::testFocusOut(QEvent* ev){
-	emit log(LOGERR, QString("Focus Out!"));
+void InteractiveMCPTPlugin::focusOut(QEvent* ev){
 }
 
 void InteractiveMCPTPlugin::mouseMove(QMouseEvent* ev){
@@ -232,7 +226,7 @@ void InteractiveMCPTPlugin::initializePlugin()
     imageWindow->setLayout(layout);
     imageWindow->resize(800, 600);
 
-    imageLabel_ = new ImageViewer(&image_, imageWindow);
+    imageLabel_ = new ImageViewer(this, &image_, imageWindow);
 	imageLabel_->setBackgroundRole(QPalette::Base);
 	imageLabel_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
 	imageLabel_->setScaledContents(false);
@@ -242,8 +236,8 @@ void InteractiveMCPTPlugin::initializePlugin()
     connect(imageLabel_,SIGNAL(mousePressed(QMouseEvent*)),this,SLOT(mousePressed(QMouseEvent*)));
     connect(imageLabel_, SIGNAL(mouseReleased(QMouseEvent*)), this, SLOT(mouseReleased(QMouseEvent*)));
     connect(imageLabel_, SIGNAL(mouseMoved(QMouseEvent*)), this, SLOT(mouseMove(QMouseEvent*)));
-    connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(testFocusIn(QEvent*)));
-	connect(imageLabel_, SIGNAL(mouseLeaved(QEvent*)), this, SLOT(testFocusOut(QEvent*)));
+    connect(imageLabel_, SIGNAL(mouseEntered(QEvent*)), this, SLOT(focusIn(QEvent*)));
+    connect(imageLabel_, SIGNAL(mouseLeaved(QEvent*)), this, SLOT(focusOut(QEvent*)));
 
 	layout->addWidget(imageLabel_);
 
@@ -301,15 +295,26 @@ void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 {
 #ifdef HAS_CUDA
     cudaTracePixels(job.pixels, mRenderTarget, image_.width());
-
     std::vector<QueuedPixel>::iterator end = job.pixels.end();
+
+    QueuedPixel minPixel = job.pixels.front();
+    QueuedPixel maxPixel = job.pixels.front();
+
     for (std::vector<QueuedPixel>::iterator it = job.pixels.begin(); it != end; ++it)
     {
         QueuedPixel& point = *it;
         size_t index = point.y * image_.width() + point.x;
         mRenderTarget.queuedSamples[index]--;
+
+        minPixel.x = std::min(minPixel.x, point.x);
+        minPixel.y = std::min(minPixel.y, point.y);
+
+        maxPixel.x = std::max(maxPixel.x, point.x);
+        maxPixel.y = std::max(maxPixel.y, point.y);
     }
-    //updateImageWidget();
+
+    //QMetaObject::invokeMethod(this, "updateImageWidget", Qt::QueuedConnection, Q_ARG(int, minPixel.x), Q_ARG(int, minPixel.y), Q_ARG(int, maxPixel.x), Q_ARG(int, maxPixel.y));
+
 #else
     std::cerr << "You don't have compiled with CUDA you scrub!" << std::endl;
     std::exit(-1);
@@ -517,7 +522,8 @@ void InteractiveMCPTPlugin::updateImageWidget(int minX, int minY, int maxX, int 
 
             if (left > 0)
             {
-                double alpha = ((double(left) / 10.0));
+                left = std::min(left, (uint8_t) 3);
+                double alpha = ((double(left) / 3.0));
                 color = (1.0 - alpha) * color + alpha * Vec3d(0.0, 1.0, 0.0);
             }
 

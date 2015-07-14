@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QLabel>
-#include <OpenFlipper/BasePlugin/LoggingInterface.hh>
+#include <InteractiveMCPT_.hh>
+
+#include <QCursor>
 
 class ImageViewer : public QLabel{
     Q_OBJECT
@@ -14,16 +16,32 @@ signals:
 	void mouseEntered(QEvent* ev);
 
 public:
-	ImageViewer(QImage* image, QWidget* parent = 0) : QLabel(parent){
-		this->image_ = image;
-	}
+
+    ImageViewer(InteractiveMCPTPlugin* _plugin, QImage* image, QWidget* parent = 0) : QLabel(parent), image_(image), plugin(_plugin) {
+        _defaultBrushPixmap = QBitmap(1,1);
+        _defaultBrushPixmap.fill(Qt::black);
+        updateCursorIcon();
+        changeCursor(0);
+    }
 
 	inline bool isMouseDown(){ return mIsMouseDown; }
-	inline bool isFocused(){ return mIsFocused; }
+    inline bool isFocused(){ return mIsFocused; }
 
 	QImage* getImage(){ return image_; }
 
+    void updateCursorIcon();
+
+    void changeCursor(int type);
+
+    inline const QPixmap &getCircleBrushPixmap() {return _circleBrushPixmap;}
+    inline const QPixmap &getSquarBrushPixmap() {return _squarBrushPixmap;}
+
 private:
+
+    QPixmap _defaultBrushPixmap;
+    QPixmap _circleBrushPixmap;
+    QPixmap _squarBrushPixmap;
+
 	bool mIsMouseDown = false;
 	bool mIsFocused = false;
 
@@ -33,7 +51,12 @@ private:
     int mLastMousePosX = 0;
     int mLastMousePosY = 0;
 
-	QImage* image_;
+    QImage* image_ = 0;
+
+    bool _drawCursor = false;
+
+    QCursor brushCursor;
+    InteractiveMCPTPlugin* plugin = 0;
 
 protected:
 	virtual void enterEvent(QEvent* ev);

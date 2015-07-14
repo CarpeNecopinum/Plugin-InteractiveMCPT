@@ -187,16 +187,16 @@ private slots:
       void mousePressed(QMouseEvent* ev);
       void mouseReleased(QMouseEvent* ev);
 
-      void testMousePressed(QMouseEvent* ev);
-      void testMouseReleased(QMouseEvent* ev);
-
-
-	  void testFocusIn(QEvent* ev);
-	  void testFocusOut(QEvent* ev);
+      void focusIn(QEvent* ev);
+      void focusOut(QEvent* ev);
 
       void mouseMove(QMouseEvent* ev);
 
 public:
+
+    InteractiveDrawing &getInteractiveDrawing(){
+        return mInteractiveDrawing;
+    }
 
 	ImageViewer* getImageViewer(){
 		return imageLabel_;
