@@ -1,4 +1,5 @@
 #include "../MonteCuda.hh"
+
 #include "../InfoStructs.hh"
 
 #include <cuda.h>
@@ -108,7 +109,7 @@ __device__ float3 mcTrace<0>(mcRay ray, mcMaterial* mats, KdTree<TREE_DEPTH>* tr
 }
 */
 
-__device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t triCount, curandState* state)
+__device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t triCount, curandState* state, float dsRatio)
 {
     float3 color = make_float3(0.0f, 0.0f, 0.0f);
     float3 weightLeft = make_float3(1.0f, 1.0f, 1.0f);
@@ -132,7 +133,7 @@ __device__ float3 mcTrace(mcRay ray, mcMaterial* mats, mcTriangle* tris, size_t 
             float3 mirrored = mcMirror(ray.direction, hit.normal);
 
             float3 sample;
-            ((curand_uniform(state) * totalReflectance) <= diffuseReflectance)
+            ((curand_uniform(state) * totalReflectance) <= diffuseReflectance * dsRatio)
                 ? sample = mcRandomDirCosTheta(hit.normal, state)
                 : sample = mcRandomDirCosPowerTheta(mirrored, hit.material.specularExponent, state);
             float density = (diffuseReflectance / totalReflectance) * mcDensityCosTheta(hit.normal, sample)
@@ -184,7 +185,7 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
     output[idx] = color;
 }*/
 
-__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed, bool firstRun)
+__global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed, bool firstRun, float dsRatio)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     QueuedPixel& pixel = pixels[idx];
@@ -207,7 +208,7 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
         mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
 
         /* Actual Path Tracing */
-        float3 result = mcTrace(ray, mats, tris, triCount, &state);
+        float3 result = mcTrace(ray, mats, tris, triCount, &state, dsRatio);
         if (!isnan(result.x) && !isnan(result.y) && !isnan(result.z)
          && !isinf(result.x) && !isinf(result.y) && !isinf(result.z))
         {
@@ -220,7 +221,7 @@ __global__ void tracePixels(QueuedPixel* pixels, float3* output, mcMaterial* mat
         else output[idx] += color;
 }
 
-__global__ void tracePixelsRect(mcRectangleJob* job, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed)
+__global__ void tracePixelsRect(mcRectangleJob* job, float3* output, mcMaterial* mats, mcTriangle* tris, size_t triCount, mcCameraInfo* cam, uint32_t seed, float dsRatio)
 {
     size_t blockX = threadIdx.x + blockIdx.x * blockDim.x;
     size_t blockY = threadIdx.y + blockIdx.y * blockDim.y;
@@ -246,7 +247,7 @@ __global__ void tracePixelsRect(mcRectangleJob* job, float3* output, mcMaterial*
         mcRay ray = {cam->eye_point, normalize(current_point - cam->eye_point)};
 
         // Actual Path Tracing //
-        float3 result = mcTrace(ray, mats, tris, triCount, &state);
+        float3 result = mcTrace(ray, mats, tris, triCount, &state, dsRatio);
         if (!isnan(result.x) && !isnan(result.y) && !isnan(result.z))
         {
             color += result;
@@ -305,7 +306,7 @@ void uploadCameraInfo(const CameraInfo& cam)
 }
 
 
-void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderTarget& target, size_t imageWidth)
+void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderTarget& target, size_t imageWidth, float dsRatio)
 {
     QueuedPixel* devPixels;
     cudaMalloc(&devPixels, sizeof(QueuedPixel) * pixels.size()); CUDA_CHECK
@@ -326,7 +327,7 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderTarget& target, siz
     bool firstRun = true;
     for (size_t pass = 0; pass < num_passes; ++pass)
     {
-        tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand(), firstRun); CUDA_CHECK
+        tracePixels<<<pixels.size() / cudaBlockSize(), cudaBlockSize()>>>(devPixels, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand(), firstRun, dsRatio); CUDA_CHECK
         firstRun = false;
     }
 
@@ -352,7 +353,7 @@ void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderTarget& target, siz
 }
 
 
-void cudaRectangleTracePixels(mcRectangleJob& job, RenderTarget& target, size_t imageWidth)
+void cudaRectangleTracePixels(mcRectangleJob& job, RenderTarget& target, size_t imageWidth, float dsRatio)
 {
     size_t num_passes = size_t(job.numSamples + 10 - 1) / 10;
     const int originalNumSamples = job.numSamples;
@@ -373,7 +374,7 @@ void cudaRectangleTracePixels(mcRectangleJob& job, RenderTarget& target, size_t 
 
     for (size_t pass = 0; pass < num_passes; ++pass)
     {
-        tracePixelsRect<<<gridSize, blockSize>>>(devJob, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand()); CUDA_CHECK
+        tracePixelsRect<<<gridSize, blockSize>>>(devJob, devResults, devMaterials, devTriangles, devTriangleCount, devCamera, rand() << 16 | rand(), dsRatio); CUDA_CHECK
         job.numSamples -= 10;
         cudaMemcpy(devJob, &job, sizeof(mcRectangleJob), cudaMemcpyHostToDevice);
     }

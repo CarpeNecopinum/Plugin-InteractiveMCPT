@@ -1,11 +1,11 @@
 #pragma once
 
-#define TREE_DEPTH 4
+#define TREE_DEPTH 0
 
+#include "../MonteCuda.hh"
 #include <vector_types.h>
 #include <vector>
 #include <algorithm>
-#include "../MonteCuda.hh"
 #include "Geometry.hh"
 #include "cutil_math.h"
 

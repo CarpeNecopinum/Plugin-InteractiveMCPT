@@ -104,6 +104,16 @@ private slots:
 	void changeBrushSize(int size);
     void changeSigma(double sigma);
 
+    void changeDiffuseFactor(int factor) {
+        diffuseFactor = factor;
+        diffuseSpecularRatio = (double)diffuseFactor / (double)specularFactor;
+    }
+
+    void changeSpecularFactor(int factor) {
+        specularFactor = factor;
+        diffuseSpecularRatio = (float)diffuseFactor / (float)specularFactor;
+    }
+
     void changeTone(int percent) {
         mTone = (double)percent / 100.0;
         updateImageWidget();
@@ -212,7 +222,7 @@ public:
 	};
 
     void queueJob(RenderJob job);
-    void cudaRunJob(RenderJob job);
+    void cudaRunJob(RenderJob job, float dsRatio);
 
     CameraInfo& getCam(){return mCam;}
 
@@ -239,12 +249,15 @@ protected:
 
       Smoother mSmoother;
 
+      int specularFactor = 50, diffuseFactor = 50;
+      float diffuseSpecularRatio = 1.0;
+
 
 protected:
-      void runJob(RenderJob job);
+      void runJob(RenderJob job, float dsRatio);
       std::vector<QFuture<void> > mRunningFutures;
 
-      void cudaRectangleJob(mcRectangleJob job);
+      void cudaRectangleJob(mcRectangleJob job, float dsRatio);
 private:
     QTimer updateTimer_;
     bool mUseCuda = false;

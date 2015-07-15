@@ -187,6 +187,19 @@ void InteractiveMCPTPlugin::initializeDrawingGUI(QGridLayout* layout, QWidget* p
     layout->addWidget(toneSlider, currentRow++, 1);
     connect(toneSlider, SIGNAL(valueChanged(int)), this, SLOT(changeTone(int)));
 
+    // Factor Spinboxes
+    QSpinBox* sbDiffuse = new QSpinBox(parent);
+    sbDiffuse->setMinimum(0); sbDiffuse->setMaximum(100);
+    layout->addWidget(new QLabel("RR Diffuse Factor", parent), currentRow, 0);
+    layout->addWidget(sbDiffuse, currentRow++, 1);
+    connect(sbDiffuse, SIGNAL(valueChanged(int)), this, SLOT(changeDiffuseFactor(int)));
+
+    QSpinBox* sbSpecular = new QSpinBox(parent);
+    sbSpecular->setMinimum(0); sbSpecular->setMaximum(100);
+    layout->addWidget(new QLabel("RR Diffuse Factor", parent), currentRow, 0);
+    layout->addWidget(sbSpecular, currentRow++, 1);
+    connect(sbDiffuse, SIGNAL(valueChanged(int)), this, SLOT(changeSpecularFactor(int)));
+
     // dummy stretch label
     layout->addWidget(new QLabel("", parent), currentRow, 0, 1, 2);
     layout->setRowStretch(4, 1);
@@ -291,10 +304,10 @@ void InteractiveMCPTPlugin::openWindow() {
     imageWindow->show();
 }
 
-void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
+void InteractiveMCPTPlugin::cudaRunJob(RenderJob job, float dsRatio)
 {
 #ifdef HAS_CUDA
-    cudaTracePixels(job.pixels, mRenderTarget, image_.width());
+    cudaTracePixels(job.pixels, mRenderTarget, image_.width(), dsRatio);
     std::vector<QueuedPixel>::iterator end = job.pixels.end();
 
     QueuedPixel minPixel = job.pixels.front();
@@ -321,7 +334,7 @@ void InteractiveMCPTPlugin::cudaRunJob(RenderJob job)
 #endif
 }
 
-void InteractiveMCPTPlugin::runJob(RenderJob job)
+void InteractiveMCPTPlugin::runJob(RenderJob job, float dsRatio)
 {
     std::vector<QueuedPixel>::iterator end = job.pixels.end();
     for (std::vector<QueuedPixel>::iterator it = job.pixels.begin(); it != end; ++it)
@@ -373,7 +386,7 @@ CameraInfo InteractiveMCPTPlugin::computeCameraInfo() const
     return cam;
 }
 
-void InteractiveMCPTPlugin::cudaRectangleJob(mcRectangleJob job)
+void InteractiveMCPTPlugin::cudaRectangleJob(mcRectangleJob job, float dsRatio)
 {
     #ifdef HAS_CUDA
         for (size_t y = job.top; y < job.top + job.height; y++)
@@ -383,7 +396,7 @@ void InteractiveMCPTPlugin::cudaRectangleJob(mcRectangleJob job)
             mRenderTarget.queuedSamples[index]++;
         }
 
-        cudaRectangleTracePixels(job, mRenderTarget, image_.width());
+        cudaRectangleTracePixels(job, mRenderTarget, image_.width(), dsRatio);
 
         for (size_t y = job.top; y < job.top + job.height; y++)
         for (size_t x = job.left; x < job.left + job.width; x++)
@@ -412,12 +425,12 @@ void InteractiveMCPTPlugin::queueJob(RenderJob job)
         QueuedPixel p = { -1 , -1 , 0};
         while (job.pixels.size() % CUDA_BLOCK_SIZE != 0) job.pixels.push_back(p);
 
-        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRunJob, job));
+        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRunJob, job, diffuseSpecularRatio));
         if (!updateTimer_.isActive()) updateTimer_.start();
     }
     else
     {
-        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job));
+        mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::runJob, job, diffuseSpecularRatio));
         if (!updateTimer_.isActive()) updateTimer_.start();
     }
 }
@@ -459,7 +472,7 @@ void InteractiveMCPTPlugin::globalRender()
             for (size_t x = 0; x < imageWidth; x += blockSize)
             {
                 mcRectangleJob job = {x, y, std::min(size_t(blockSize), imageWidth - x), std::min(size_t(blockSize), imageHeight - y), size_t(mSettings.samplesPerPixel)};
-                mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRectangleJob, std::move(job)));
+                mRunningFutures.push_back(QtConcurrent::run(this, &InteractiveMCPTPlugin::cudaRectangleJob, std::move(job), diffuseSpecularRatio));
             }
         }
     }
