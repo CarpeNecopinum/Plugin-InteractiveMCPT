@@ -15,9 +15,7 @@
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
 #include <ObjectTypes/Light/Light.hh>
 
-#ifdef HAS_CUDA
 #include "MonteCuda.hh"
-#endif
 
 #include "InfoStructs.hh"
 #include "Smoothing.hh"

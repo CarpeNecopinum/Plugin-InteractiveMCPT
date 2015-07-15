@@ -1,15 +1,23 @@
 #pragma once
 
+struct mcRectangleJob
+{
+	size_t left, top, width, height;
+	size_t numSamples;
+};
+
+#ifndef CUDA_RECTANGLE_SIZE
+#define CUDA_RECTANGLE_SIZE 32
+#endif
+
+#ifdef HAS_CUDA
+
 #include <stdint.h>
 #include <OpenFlipper/BasePlugin/PluginFunctions.hh>
 #include <cuda.h>
 #include <vector_functions.h>
 #include <vector_types.h>
 #include "InfoStructs.hh"
-
-#ifndef CUDA_RECTANGLE_SIZE
-#define CUDA_RECTANGLE_SIZE 32
-#endif
 
 void cudaTest(void);
 
@@ -25,12 +33,6 @@ inline ACG::Vec3d toACG3(float3 cuda) {
 }
 
 size_t cudaBlockSize();
-
-struct mcRectangleJob
-{
-    size_t left, top, width, height;
-    size_t numSamples;
-};
 
 struct mcMaterial
 {
@@ -79,3 +81,5 @@ void uploadBuffers(mcMaterial* materials, size_t materialCount, mcTriangle* tris
 void uploadCameraInfo(const CameraInfo& cam);
 void cudaTracePixels(std::vector<QueuedPixel> &pixels, RenderTarget &target, size_t imageWidth);
 void cudaRectangleTracePixels(mcRectangleJob& job, RenderTarget &target, size_t imageWidth);
+
+#endif

@@ -21,7 +21,7 @@ private:
 
 class InteractiveDrawing : public QObject{
 	
-Q_OBJECT
+	Q_OBJECT
 
     enum BRUSHES{
         NONE = 0,

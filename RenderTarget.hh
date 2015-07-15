@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdint.h>
 #include <QMutex>
 #include <ACG/Math/VectorT.hh>
 
